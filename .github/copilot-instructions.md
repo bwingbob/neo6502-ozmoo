@@ -4,8 +4,21 @@ This project ports Ozmoo to the OLIMEX Neo6502. Preserve the upstream
 interpreter core and isolate machine-specific code behind Ozmoo's existing
 target-selection and conditional-assembly patterns.
 
+The project repository is `bwingbob/neo6502-ozmoo`; the original Ozmoo
+repository is `johanberntsson/ozmoo`. In this checkout they are configured as
+`origin` and `upstream`, respectively. Keep upstream changes distinguishable
+from the port and do not push without explicit permission.
+
+The Neo6502 target has not yet been implemented. Investigate its hardware and
+software interfaces before choosing a memory layout, loader, or I/O approach;
+do not treat another target's implementation as a hardware specification.
+
 Ozmoo's existing build uses Ruby and the ACME assembler. cc65 is the Neo6502
 C toolchain; it does not replace ACME for the existing interpreter build.
+ACME, cc65, cl65, Ruby, and Exomizer were available on PATH during setup, but
+verify tools in the current environment. On Linux, `make.rb` defaults to
+`exomizer/src/exomizer` inside the repository, not the PATH executable; use its
+documented `.ozmoorc` override if that path is absent.
 
 ## Architecture and porting
 
