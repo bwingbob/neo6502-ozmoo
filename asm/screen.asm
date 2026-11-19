@@ -864,6 +864,11 @@ printchar_buffered
 	pha
 	tya
 	pha
+	!ifdef TARGET_NEO6502 {
+		lda .buffer_char
+		jsr s_printchar
+		jmp .printchar_done
+	}
 	; is this a buffered window?
 	lda current_window
 	bne .is_not_buffered

@@ -16,6 +16,7 @@ if $is_windows then
 		'X128' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\x128.exe -silent -80 -autostart-delay-random",
 		'XPLUS4' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\xplus4.exe -silent -autostart-delay-random",
 		'MEGA65' => "\"C:\\Program Files\\xemu\\xmega65.exe\" -syscon", # -syscon is a workaround for a serious xemu bug
+		'NEO' => __dir__ + "\\neo6502\\neo.exe",
 		'C1541' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\c1541.exe",
 		'EXOMIZER' => "C:\\WoInstall\\Exomizer-3.1.0\\win32\\exomizer.exe",
 		'ACME' => "C:\\WoInstall\\acme0.97win\\acme\\acme.exe",
@@ -33,6 +34,7 @@ else
 		'X128' => "x128 -silent -autostart-delay-random",
 		'XPLUS4' => "xplus4 -silent -autostart-delay-random",
 		'MEGA65' => "xemu-xmega65 -besure",
+		'NEO' => __dir__ + "/neo6502/neo",
 		'C1541' => "c1541",
 		'EXOMIZER' => __dir__ + "/exomizer/src/exomizer",
 		'ACME' => "acme",
@@ -68,7 +70,7 @@ unless $settings_file.empty?
 		if line =~ /^\s*'?(\w+)'?\s*=>?(.*)/ then
 			name = $1.upcase
 			val = $2.chomp.strip
-			if name =~ /^(X16|X64|X128|XPLUS4|MEGA65|C1541|EXOMIZER|ACME|ZIP|PYTHON)$/ then
+			if name =~ /^(X16|X64|X128|XPLUS4|MEGA65|NEO|C1541|EXOMIZER|ACME|ZIP|PYTHON)$/ then
 				$executables[name] = val
 			end
 		end
@@ -1394,6 +1396,8 @@ def build_interpreter()
 	necessarysettings +=  " -DCONF_TRK=#{$CONFIG_TRACK}" if $CONFIG_TRACK
 	if $target == 'x16' then
 		necessarysettings +=  " --cpu 65c02"
+	elsif $target == 'neo6502' then
+		necessarysettings +=  " --cpu 65c02"
 	elsif $target == 'mega65' then
 		necessarysettings +=  " --cpu m65"
 	else
@@ -1798,6 +1802,60 @@ def play(filename, storyname)
 			end
 		else
 			puts "Location of MEGA65 emulator unknown. Please set MEGA65 executable location at start of make.rb"
+			exit 0
+		end
+	elsif $target == "neo6502" then
+		if $executables.has_key?('NEO') then
+			emu = File.expand_path($executables['NEO'])
+			unless File.exist?(emu)
+				puts "Location of Neo6502 emulator is set, but executable was not found at #{$executables['NEO']}"
+				exit 0
+			end
+
+			interp_prg = File.join($TEMPDIR, "ozmoo")
+			story_prg  = $compmem_filename
+			unless File.exist?(interp_prg)
+				puts "Cannot auto-run Neo6502 build: expected #{interp_prg} was not found."
+				exit 0
+			end
+			unless File.exist?(story_prg)
+				puts "Cannot auto-run Neo6502 build: expected #{story_prg} was not found."
+				exit 0
+			end
+
+			interp_data = File.binread(interp_prg)
+			story_data = File.binread(story_prg)
+			if interp_data.bytesize < 2 or story_data.bytesize < 2
+				puts "Cannot auto-run Neo6502 build: one of the generated PRG files is too small."
+				exit 0
+			end
+
+			interp_header_addr = interp_data.getbyte(0) + (interp_data.getbyte(1) << 8)
+
+			interp_is_prg = interp_header_addr >= 0x0800 && interp_header_addr <= 0xff00
+			interp_payload_size = interp_is_prg ? (interp_data.bytesize - 2) : interp_data.bytesize
+
+			interp_addr = interp_is_prg ? interp_header_addr : $start_address
+			story_addr = interp_addr + interp_payload_size
+
+			interp_raw = File.join($TEMPDIR, "ozmoo-neo-main.bin")
+			story_raw = File.join($TEMPDIR, "ozmoo-neo-story.bin")
+			if interp_is_prg
+				File.binwrite(interp_raw, interp_data.byteslice(2, interp_data.bytesize - 2))
+			else
+				File.binwrite(interp_raw, interp_data)
+			end
+			File.binwrite(story_raw, story_data)
+
+			interp_abs = File.expand_path(interp_raw)
+			story_abs = File.expand_path(story_raw)
+
+			command = "\"#{emu}\" cold " +
+			          "\"#{interp_abs}\"@#{interp_addr.to_s(16)} " +
+			          "\"#{story_abs}\"@#{story_addr.to_s(16)} " +
+			          "run@#{interp_addr.to_s(16)}"
+		else
+			puts "Location of Neo6502 emulator unknown. Please set NEO executable location at start of make.rb"
 			exit 0
 		end
 	elsif $target == "plus4" then
@@ -2827,8 +2885,8 @@ def print_usage
 	puts "         [-dt:\"text\"] [-rd] [-as(a|w) <soundpath>]"
 	puts "         [-sig[:0|1|noninfocom]] [-username:\"text\"]"
 	puts "         [-u[:0|1|r]] [-x[:0|1]] [-df[:0|1|f]] <storyfile>"
-	puts "  -t: specify target machine. Available targets are c64 (default), c128, plus4, mega65 and x16."
-	puts "  -S1|-S2|-D2|-D3|-71|-71D|-81|-P|-ZIP: build mode. Defaults to S1 (71 for C128, 81 for MEGA65, ZIP for X16). See docs."
+	puts "  -t: specify target machine. Available targets are c64 (default), c128, plus4, mega65, x16 and neo6502."
+	puts "  -S1|-S2|-D2|-D3|-71|-71D|-81|-P|-ZIP: build mode. Defaults to S1 (71 for C128, 81 for MEGA65, ZIP for X16, P for neo6502). See docs."
 	puts "  -v: Verbose mode. Print as much details as possible about what make.rb is doing."
 	puts "  -p: preload a maximum of n virtual memory blocks to make game faster at start."
 	puts "  -b: only preload virtual memory blocks that can be included in the boot file."
@@ -3005,7 +3063,7 @@ begin
 		elsif arg =~ /^-p:(\d+)$/ then
 			preload_max_vmem_blocks = $1.to_i
 			limit_preload_vmem_blocks = true
-		elsif arg =~ /^-t:(c64|c128|mega65|plus4|x16)$/ then
+		elsif arg =~ /^-t:(c64|c128|mega65|plus4|x16|neo6502)$/ then
 			$target = $1
 			if $target == "mega65" then
 			    # $start_address = 0x1001
@@ -3013,6 +3071,11 @@ begin
 			elsif $target == "x16" then
 			    $start_address = 0x0801
 				$memory_end_address = 0xa000
+				$unbanked_ram_end_address = $memory_end_address
+				$normal_ram_end_address = $memory_end_address
+			elsif $target == "neo6502" then
+				$start_address = 0x1000
+				$memory_end_address = 0x10000
 				$unbanked_ram_end_address = $memory_end_address
 				$normal_ram_end_address = $memory_end_address
 			elsif $target == "plus4" then
@@ -3262,6 +3325,7 @@ $target_number =
 	when 'plus4' then 3
 	when 'mega65' then 4
 	when 'x16' then 5
+	when 'neo6502' then 6
 	else 1
 	end
 
@@ -3395,6 +3459,8 @@ print_usage_and_exit() if await_soundpath or await_preloadfile or await_fontfile
 unless mode
 	if $target == 'c128'
 		mode = MODE_71
+	elsif $target == 'neo6502'
+		mode = MODE_P
 	elsif $target == 'x16'
 		mode = MODE_ZIP
 	elsif $target == 'mega65'
@@ -3435,6 +3501,11 @@ end
 
 if mode == MODE_P and $target == 'c128'
 	puts "ERROR: Build mode P is not supported on this target platform."
+	exit 1
+end
+
+if mode != MODE_P and $target == 'neo6502'
+	puts "ERROR: Only build mode P is currently supported on this target platform."
 	exit 1
 end
 
@@ -3515,7 +3586,7 @@ if $sound_path
 #	puts $sound_files
 end
 
-$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16')
+$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16' && $target != 'neo6502')
 
 $GENERALFLAGS.push('DANISH_CHARS') if $char_map == 'da'
 $GENERALFLAGS.push('SWEDISH_CHARS') if $char_map == 'sv'

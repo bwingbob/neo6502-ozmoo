@@ -93,6 +93,14 @@
 	}
 }
 
+!ifdef TARGET_NEO6502 {
+	TARGET_ASSIGNED = 1
+	SUPPORT_REU = 0
+	!ifndef SLOW {
+		SLOW = 1
+	}
+}
+
 !ifndef TARGET_ASSIGNED {
 	; No target given. C64 is the default target
 	TARGET_C64 = 1
@@ -957,6 +965,8 @@ c128_border_phase1
 
 } else ifdef TARGET_X16 {
 !source "constants-x16.asm"
+} else ifdef TARGET_NEO6502 {
+!source "constants-neo6502.asm"
 } else {
 !source "constants.asm"
 }
@@ -1002,6 +1012,10 @@ game_id		!byte 0,0,0,0
 .initialize
 	cld
 	cli
+!ifdef TARGET_NEO6502 {
+	lda #12 ; ASCII clear-screen control
+	jsr neo_vector_writechar
+}
 !ifdef TARGET_X16 {
 	jsr x16_backup_basic_zp	
 }
@@ -1027,14 +1041,15 @@ game_id		!byte 0,0,0,0
 }
 }
 }
-
-
 !ifdef TESTSCREEN {
 	jmp testscreen
 }
 	jsr deletable_init_start
 ;	jsr init_screen_colours
 	jsr deletable_screen_init_1
+!ifdef TARGET_NEO6502 {
+	jmp neo_start_after_prelude
+}
 !if SPLASHWAIT > 0 {
 	jsr splash_screen
 }
@@ -1148,6 +1163,7 @@ game_id		!byte 0,0,0,0
 
 .supercpu
 }
+neo_start_after_prelude
 	jsr deletable_init
 	jsr parse_object_table
 !ifndef Z5PLUS {
@@ -1265,6 +1281,9 @@ statmem_reu_banks !byte 0
 !source "smoothscroll.asm"
 }
 !source "utilities.asm"
+!ifdef TARGET_NEO6502 {
+!source "neo6502-morpheus.asm"
+}
 !ifdef SCROLLBACK {
 !source "scrollback.asm"
 }

@@ -1,67 +1,54 @@
-# Neo6502 port
+# Neo6502 port guidance
 
-This project ports Ozmoo to the OLIMEX Neo6502. Preserve the upstream
-interpreter core and isolate machine-specific code behind Ozmoo's existing
-target-selection and conditional-assembly patterns.
+This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmoo (`upstream`: `johanberntsson/ozmoo`). Keep upstream-compatible changes separate from Neo6502-specific work, and do not push without explicit permission.
 
-The project repository is `bwingbob/neo6502-ozmoo`; the original Ozmoo
-repository is `johanberntsson/ozmoo`. In this checkout they are configured as
-`origin` and `upstream`, respectively. Keep upstream changes distinguishable
-from the port and do not push without explicit permission.
+## Current state and intent
 
-The Neo6502 target has not yet been implemented. Investigate its hardware and
-software interfaces before choosing a memory layout, loader, or I/O approach;
-do not treat another target's implementation as a hardware specification.
+- Neo6502 target is **not implemented yet**. Treat this as a porting/design phase.
+- Preserve interpreter core behavior; isolate new platform logic behind existing target/version conditionals.
+- Verify Neo6502 hardware/software interfaces directly before committing to memory map, loader, I/O, or screen assumptions.
 
-Ozmoo's existing build uses Ruby and the ACME assembler. cc65 is the Neo6502
-C toolchain; it does not replace ACME for the existing interpreter build.
-ACME, cc65, cl65, Ruby, and Exomizer were available on PATH during setup, but
-verify tools in the current environment. On Linux, `make.rb` defaults to
-`exomizer/src/exomizer` inside the repository, not the PATH executable; use its
-documented `.ozmoorc` override if that path is absent.
+## Architecture you must understand first
 
-## Architecture and porting
+- `asm/ozmoo.asm` is the root assembly unit (`!source` fan-in + `!ifdef` target/version selection).
+- `make.rb` is the build orchestrator: it derives `-D` defines (target, z-version, features) and drives ACME/Exomizer/disk output.
+- Core interpreter path: `asm/zmachine.asm`, `asm/stack.asm`, `asm/memory.asm`, `asm/vmem.asm`.
+- Screen/input diverge by Z-machine version:
+  - non-v6: `asm/screen.asm`, `asm/screenkernal.asm`
+  - v6: `asm/screen-z6.asm`, `asm/screenkernal-z6.asm` (+ picture engines)
+- Target memory/zero-page layouts live in `asm/constants*.asm`; any shared layout edits must be checked across all target constants files.
 
-- `asm/ozmoo.asm` sources the interpreter and selects code using ACME
-  conditionals. `make.rb` derives target, Z-machine version, and feature
-  defines; C64 is the default target. Check all affected configurations when
-  changing shared code.
-- The interpreter core is in `zmachine.asm`, `stack.asm`, `memory.asm`, and
-  `vmem.asm`. Screen, input, disk, and memory-map code are target-sensitive;
-  inspect the existing target branches and `constants*.asm` before adding a
-  Neo6502 implementation.
-- Version 6 uses `screen-z6.asm` and `screenkernal-z6.asm`, rather than the
-  non-v6 screen files. Check the Z-machine specification for version-specific
-  opcode behavior. Optional operands must be guarded by `z_operand_count`:
-  the operand array is not cleared between instructions.
-- Keep target-specific memory, display, and I/O assumptions out of shared
-  interpreter paths. Changes to shared zero-page layouts must account for all
-  target-specific constants files.
+## Codebase-specific conventions
 
-## Build and verification
+- ACME + Ruby are the interpreter build path. cc65/cl65 are relevant for Neo6502 tooling, but **do not replace** ACME for Ozmoo builds.
+- Prefer adding target branches over cloning shared logic; keep platform assumptions out of common opcode/interpreter paths.
+- For v6 opcode work, guard optional operands with `z_operand_count` checks (operand storage is reused between instructions).
+- Keep z6/non-z6 screen paths behaviorally aligned unless a spec/platform difference requires divergence.
 
-- Run `ruby make.rb` without arguments for build options. The `-s` option
-  starts an emulator; the Makefile's emulator targets may require additional
-  local tools or game files.
-- For shared changes, exercise both v6 and non-v6 builds across affected
-  existing targets. `examples/dejavu.z3` and `test/praxix.z5` are regression
-  inputs; `testz6.inf` can be compiled with Inform and compared with Frotz.
-  Screen changes also need runtime comparison, not just successful assembly.
-- `tests/Makefile` provides build checks; `test/` contains conformance games
-  that can be played manually. `temp/acme_labels.txt` is overwritten by each
-  build, so use labels from the exact binary being debugged.
-- Documentation sources are in `documentation/manual/`; when changing
-  shipped manuals, rebuild the corresponding generated PDFs with its Makefile.
+## Productive workflows
 
-`CLAUDE.md` has detailed architecture and debugging notes, especially for v6.
-Its branch-specific history and local tool paths may not describe this checkout;
-verify them against the current files and branch.
+- Discover options: `ruby make.rb`
+- Core regression builds used in this repo’s Makefile/docs:
+  - `make z6`, `make z6-fcm`, `make z6-x16`, `make z6-pics`, `make z6-pics-x16`
+  - `make dejavu-c64` (non-v6 regression)
+  - `ruby make.rb test/praxix.z5` (or equivalent target variants)
+- Build checks: `make -C tests` (runs `tests/test_builds.rb`)
+- `temp/acme_labels.txt` is regenerated every build; only use labels matching the exact binary under debug.
 
-Consult these references when designing or implementing the port:
+## Tooling and integration details
+
+- Linux default Exomizer path in `make.rb` is repo-local: `exomizer/src/exomizer`.
+- Override tool paths with `.ozmoorc` (checked via `OZMOO_HOME`, cwd, then home directory).
+- Picture pipeline utilities are in `tools/` (`pics2asm.py`, `make_blorb.py`); `-pics` builds depend on that path.
+
+## Validation expectations for shared changes
+
+- Do both assembly success and runtime behavior checks (especially screen/window changes).
+- Exercise both v6 and non-v6 baselines (`testz6.inf`/frotz comparison, `examples/dejavu.z3`, `test/praxix.z5`).
+- Keep manual/doc changes in sync with `documentation/manual/` sources.
+
+## External references for Neo6502 porting
 
 - [Neo6502 documentation](https://neo6502.com/)
 - [Using cc65 on Neo6502](https://github.com/paulscottrobson/neo6502-documents/blob/main/neo6502/docs/wiki/Using-CC65.md)
-- [Ozmoo Oric porting guide](https://github.com/benedictemarty/ozmoo-oric/blob/oric-port/docs/PORTING_ORIC.md)
-
-Use the Oric guide for porting approach and context, not as a source of
-Neo6502 hardware APIs: verify those against the Neo6502 documentation.
+- [Ozmoo Oric porting guide](https://github.com/benedictemarty/ozmoo-oric/blob/oric-port/docs/PORTING_ORIC.md) (process guidance only; not Neo6502 hardware authority)

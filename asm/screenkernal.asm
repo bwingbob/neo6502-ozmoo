@@ -100,7 +100,6 @@ vera_composite_colour !byte 0
 	lda #$11
 	sta VERA_addr_bank
 	lda window_start_row + 1 ; how many top lines to protect
-	adc #$b0
 	tay
 	lda #0
 	sta VERA_ctrl
@@ -109,28 +108,12 @@ vera_composite_colour !byte 0
 	ldx scroll_delay
 	beq .done_delaying_vera
 	dex
-	beq ++
--	tya
-	pha
-	txa
-	pha
-	jsr wait_an_interval
-	pla
-	tax
-	pla
-	tay
-	dex
-	bne -
+	beq .done_delaying_vera
 
-++
-
--	ldx VERA_scanline_l
+.wait_for_scanline
+	ldx VERA_scanline_l
 	cpx #<450
-	bne -
-	lda VERA_ien
-	and #$40
-	beq -
-	
+	bcc .wait_for_scanline
 .done_delaying_vera
 	
 	; Begin actual scrolling
@@ -412,6 +395,11 @@ s_x16_screen_mode	!byte 0
 }
 
 convert_petscii_to_screencode
+	; Neo6502 text console expects plain character bytes, not C64 screen codes.
+!ifdef TARGET_NEO6502 {
+	and #%01111111
+	rts
+}
    ; convert from pet ascii to screen code
 	cmp #$40
 	bcc ++    ; no change if numbers or special chars
@@ -504,7 +492,10 @@ s_plot
 	jmp .update_screenpos
 
 s_set_text_colour
-!ifdef TARGET_X16 {
+!ifdef TARGET_NEO6502 {
+	sta s_colour
+	rts
+} else ifdef TARGET_X16 {
 	jmp VERASetForegroundColour
 } else {
 	sta s_colour
@@ -533,7 +524,9 @@ s_delete_cursor
 } else {
 	lda s_colour
 }
+	!ifndef TARGET_NEO6502 {
 	sta (zp_colourline),y
+	}
 !ifdef TARGET_MEGA65 {
 	jsr colour1k
 }
@@ -547,6 +540,13 @@ s_printchar
 	; used registers: -
 	stx s_stored_x
 	sty s_stored_y
+
+!ifdef TARGET_NEO6502 {
+	jsr .neo_printchar
+	ldx s_stored_x
+	ldy s_stored_y
+	rts
+}
 
 	ldx window_start_row + 1
 	cpx s_screen_height
@@ -608,7 +608,9 @@ s_printchar
 		jsr colour2k
 	}
 	lda s_colour
+	!ifndef TARGET_NEO6502 {
 	sta (zp_colourline),y
+	}
 	!ifdef TARGET_MEGA65 {
 		jsr colour1k
 	}
@@ -659,7 +661,10 @@ s_printchar
 	ldy current_window 
 	cmp window_start_row,y
 	pla ; Doesn't affect C
-	bcs .outside_current_window
+	bcc +
+	jmp .outside_current_window
+
+
 .resume_printing_normal_char	
 	jsr convert_petscii_to_screencode
 	ora s_reverse
@@ -695,7 +700,9 @@ s_printchar
 } else {
 	lda s_colour
 }
+	!ifndef TARGET_NEO6502 {
 	sta (zp_colourline),y
+	}
 	!ifdef TARGET_MEGA65 {
 		jsr colour1k
 	}
@@ -738,16 +745,181 @@ s_printchar
 	ldy s_stored_y
 	rts
 
+!ifdef TARGET_NEO6502 {
+.neo_printchar
+	pha
+	lda #SCREEN_WIDTH
+	sta s_screen_width
+	sta s_screen_width_minus_one
+	dec s_screen_width_minus_one
+	sta s_screen_width_plus_one
+	inc s_screen_width_plus_one
+	lda #SCREEN_HEIGHT
+	sta s_screen_height
+	sta s_screen_height_minus_one
+	dec s_screen_height_minus_one
+	pla
+
+	cmp #$93
+	bne .neo_not_clear
+	lda #12
+	jsr neo_vector_writechar
+	lda #0
+	sta zp_screencolumn
+	sta zp_screenrow
+	rts
+
+.neo_not_clear
+	cmp #$0d
+	bne .neo_not_newline
+	jsr .neo_flush_word
+	jsr .neo_emit_newline
+	rts
+
+.neo_not_newline
+	cmp #20
+	bne .neo_not_delete
+	jsr .neo_flush_word
+	lda #12
+	jsr neo_vector_writechar
+	lda #8
+	jsr neo_vector_writechar
+	rts
+
+.neo_not_delete
+	cmp #$12
+	bne .neo_not_reverse_on
+	rts
+
+.neo_not_reverse_on
+	cmp #$92
+	bne .neo_not_reverse_off
+	rts
+
+.neo_not_reverse_off
+	cmp #$8d
+	bne .neo_not_8d
+	rts
+
+.neo_not_8d
+	sta s_neo_char
+	!ifdef USE_INPUTCOL {
+	lda input_colour_active
+	} else {
+	lda s_cursorswitch
+	}
+	beq .neo_buffered_mode
+	lda s_neo_char
+	cmp #$20
+	bcs .neo_input_print
+	rts
+.neo_input_print
+	and #$7f
+	jsr neo_vector_writechar
+	inc zp_screencolumn
+	rts
+
+.neo_buffered_mode
+	lda s_neo_char
+	cmp #$3e
+	bne .neo_not_prompt
+	jsr .neo_flush_word
+	lda #$3e
+	jsr neo_vector_writechar
+	inc zp_screencolumn
+	rts
+
+.neo_not_prompt
+	lda s_neo_char
+	cmp #$20
+	beq .neo_emit_space
+	cmp #$20
+	bcs .neo_not_ctrl
+	rts
+
+.neo_not_ctrl
+	lda s_neo_char
+	and #$7f
+	ldx s_neo_word_len
+	cpx #SCREEN_WIDTH
+	bcc +
+	jsr .neo_flush_word
+	ldx #0
++	sta print_buffer,x
+	inx
+	stx s_neo_word_len
+	rts
+
+.neo_emit_space
+	jsr .neo_flush_word
+	lda zp_screencolumn
+	bne .neo_space_not_col0
+	rts
+.neo_space_not_col0
+	cmp s_screen_width_minus_one
+	bcc .neo_space_emit
+	rts
+.neo_space_emit
+	lda #$20
+	jsr neo_vector_writechar
+	inc zp_screencolumn
+	rts
+
+.neo_emit_newline
+	lda #13
+	jsr neo_vector_writechar
+	lda #0
+	sta zp_screencolumn
+	inc zp_screenrow
+	lda zp_screenrow
+	cmp s_screen_height
+	bcc +
+	dec zp_screenrow
++	rts
+
+.neo_flush_word
+	lda s_neo_word_len
+	beq .neo_flush_done
+	lda zp_screencolumn
+	beq .neo_emit_word
+	clc
+	adc s_neo_word_len
+	cmp s_screen_width_plus_one
+	bcc .neo_emit_word
+	jsr .neo_emit_newline
+
+.neo_emit_word
+	ldx #0
+.neo_emit_word_loop
+	cpx s_neo_word_len
+	bcs .neo_flush_done_reset
+	lda print_buffer,x
+	jsr neo_vector_writechar
+	inc zp_screencolumn
+	inx
+	bne .neo_emit_word_loop
+
+.neo_flush_done_reset
+	lda #0
+	sta s_neo_word_len
+.neo_flush_done
+	rts
+}
+
 .outside_current_window
 !ifdef Z4 {
 	jmp .printchar_end
 } else {
 	cpy #1
-	bne .printchar_end
+	beq .outside_window_is_upper
+	jmp .printchar_end
+.outside_window_is_upper
 	; This is window 1. Expand it if possible.
 	ldy zp_screenrow
 	cpy window_start_row ; Compare to end of screen (window 0)
-	bcs .printchar_end
+	bcc .outside_window_can_expand
+	jmp .printchar_end
+.outside_window_can_expand
 	iny
 	sty window_start_row + 1
 	; Move lower window cursor if it gets hidden by upper window
@@ -1012,6 +1184,7 @@ s_scrolled_lines !byte 0
 }
 
 !ifndef TARGET_X16 {
+!ifndef TARGET_NEO6502 {
 ; ----------- Delay for slower scrolling
 
 	ldx scroll_delay
@@ -1051,6 +1224,7 @@ s_scrolled_lines !byte 0
 	bne --
 	cli
 .done_delaying
+}
 }
 !ifdef TARGET_MEGA65 {
 	jsr colour2k	
@@ -1142,6 +1316,9 @@ s_scrolled_lines !byte 0
 	sta s_current_screenpos_row ; force recalculation
 s_erase_line
 	; registers: a,x,y
+!ifdef TARGET_NEO6502 {
+	rts
+}
 	lda zp_screenrow
 	cmp s_screen_height
 	bcc +
@@ -1291,6 +1468,10 @@ s_erase_line_from_cursor
 	jmp .erase_line_from_any_col
 
 s_cursorswitch !byte 0
+!ifdef TARGET_NEO6502 {
+s_neo_char !byte 0
+s_neo_word_len !byte 0
+}
 !ifdef USE_BLINKING_CURSOR {
 s_cursormode !byte 0
 }
@@ -1309,6 +1490,9 @@ turn_off_cursor
     sta s_cursorswitch
 
 update_cursor
+!ifdef TARGET_NEO6502 {
+	rts
+}
     sty object_temp
 	jsr .update_screenpos
     ldy zp_screencolumn
@@ -1358,7 +1542,9 @@ update_cursor
 !ifdef TARGET_MEGA65 {
     jsr colour2k
 }
+	!ifndef TARGET_NEO6502 {
     sta (zp_colourline),y
+	}
 !ifdef TARGET_MEGA65 {
     jsr colour1k
 }
