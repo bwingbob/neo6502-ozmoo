@@ -325,7 +325,15 @@ neo_kernal_close_file_close
 	lda #neo_api_group_fileio
 	ldx #neo_api_fn_file_close
 	jsr neo_kernal_api_call
-	bcs neo_kernal_close_done
+	bcc .close_ok
+	; Ozmoo frequently issues defensive CLOSE calls (e.g. 15/2/255) even when
+	; the channel may not currently be open. On Neo, that can report an API
+	; error and wrongly cascade into disk error handling. Treat CLOSE errors as
+	; non-fatal for compatibility with that usage pattern.
+	lda #0
+	sta neo_kernal_status
+	clc
+.close_ok
 	lda neo_kernal_temp_lfn
 	cmp neo_kernal_input_lfn
 	bne neo_kernal_close_check_output
@@ -410,6 +418,13 @@ neo_kernal_readchar_wait_key
 neo_kernal_getchar
 	; GETIN semantics: non-blocking keyboard read; A=0 when no key pending.
 	jsr neo_vector_readchar
+	cmp #$08
+	beq .map_delete
+	cmp #$7f
+	bne .done
+.map_delete
+	lda #20
+.done
 	jmp neo_kernal_set_status_ok_preserve_a
 
 neo_kernal_printchar

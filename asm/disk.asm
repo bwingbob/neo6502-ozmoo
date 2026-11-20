@@ -160,6 +160,11 @@ readblock
 	sta readblocks_currentblock_adjusted + 1
 	sta .blocks_to_go + 1
 
+!ifdef TARGET_NEO6502 {
+	jsr neo_readblock
+	rts
+}
+
 !if SUPPORT_REU = 1 {
 	; Check if game has been cached to REU
 	bit use_reu
@@ -321,12 +326,155 @@ readblock
 .skip_sectors 	!byte 0
 .temp_y 		!byte 0
 
+!ifdef TARGET_NEO6502 {
+neo_story_file_open		!byte 0
+neo_config_file_open	!byte 0
+
+neo_open_story_file
+	lda #neo_story_filename_len
+	ldx #<neo_story_filename
+	ldy #>neo_story_filename
+	jsr kernal_setnam
+
+	lda #$02
+	ldx #$08
+	ldy #$02
+	jsr kernal_setlfs
+	jsr kernal_open
+	bcc .opened_ok
+	jmp is_error
+.opened_ok
+	rts
+
+neo_readblock
+	jsr neo_open_story_file
+
+	lda #$02
+	sta neo_api_param0
+	lda #0
+	sta neo_api_param1
+	lda readblocks_currentblock_adjusted
+	sta neo_api_param2
+	lda readblocks_currentblock_adjusted + 1
+	sta neo_api_param3
+	lda #0
+	sta neo_api_param4
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_seek
+	jsr neo_kernal_api_call
+	bcc .seek_ok
+	jmp is_error
+.seek_ok
+
+	lda #$02
+	sta neo_api_param0
+	lda readblocks_mempos
+	sta neo_api_param1
+	lda readblocks_mempos + 1
+	sta neo_api_param2
+	lda #0
+	sta neo_api_param3
+	lda #1
+	sta neo_api_param4
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_read
+	jsr neo_kernal_api_call
+	bcc .read_ok
+	jmp is_error
+.read_ok
+	lda #$02
+	jsr kernal_close
+	bcc +
+	jmp is_error
+
+	rts
+
++
+	rts
+
+neo_story_filename
+	!text "ozmoo.story"
+neo_story_filename_len = * - neo_story_filename
+
+neo_open_config_file
+	lda #neo_config_filename_len
+	ldx #<neo_config_filename
+	ldy #>neo_config_filename
+	jsr kernal_setnam
+
+	lda #$03
+	ldx #$08
+	ldy #$02
+	jsr kernal_setlfs
+	jsr kernal_open
+	bcc .cfg_opened_ok
+	jmp is_error
+.cfg_opened_ok
+	rts
+
+neo_read_track_sector
+	jsr neo_open_config_file
+
+	lda #$03
+	sta neo_api_param0
+	lda #0
+	sta neo_api_param1
+	lda .sector
+	sta neo_api_param2
+	lda #0
+	sta neo_api_param3
+	lda #0
+	sta neo_api_param4
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_seek
+	jsr neo_kernal_api_call
+	bcc .cfg_seek_ok
+	jmp is_error
+.cfg_seek_ok
+
+	lda #$03
+	sta neo_api_param0
+	lda readblocks_mempos
+	sta neo_api_param1
+	lda readblocks_mempos + 1
+	sta neo_api_param2
+	lda #0
+	sta neo_api_param3
+	lda #1
+	sta neo_api_param4
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_read
+	jsr neo_kernal_api_call
+	bcc .cfg_read_ok
+	jmp is_error
+.cfg_read_ok
+	lda #$03
+	jsr kernal_close
+	bcc +
+	jmp is_error
+
+	rts
+
++
+	rts
+
+neo_config_filename
+	!text "ozmoo.cfg"
+neo_config_filename_len = * - neo_config_filename
+}
+
 	; convert track/sector to ascii and update drive command
 read_track_sector
 	; input: a: track, x: sector, y: device#, Word at readblocks_mempos holds storage address
 	sta .track
 	stx .sector
 	sty .device
+
+!ifdef TARGET_NEO6502 {
+	jsr neo_read_track_sector
+	rts
+}
+
 .have_set_device_track_sector
 	lda .track
 	jsr convert_byte_to_two_digits

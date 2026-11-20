@@ -4315,6 +4315,13 @@ else
 	end
 end
 
+	if $target == 'neo6502'
+		neo_story_path = File.join(__dir__, 'storage', 'ozmoo.story')
+		neo_story_data = $VMEM ? vmem_contents : ($story_file_data || '')
+		File.binwrite(neo_story_path, neo_story_data)
+		puts "Wrote Neo6502 VMEM sidecar: #{neo_story_path} (#{neo_story_data.bytesize} bytes)." if $verbose
+	end
+
 ############################# End of moved block
 
 if $VMEM
@@ -4326,6 +4333,9 @@ if $VMEM and preload_max_vmem_blocks and preload_max_vmem_blocks > vmem_data[3] 
 	preload_max_vmem_blocks = vmem_data[3]
 end
 
+build_config_data = ($target == 'neo6502') ? config_data : config_data.dup
+build_vmem_data = ($target == 'neo6502') ? vmem_data : vmem_data.dup
+
 case mode
 when MODE_P
 	sizediff = $story_size - $zmachine_memory_size
@@ -4333,41 +4343,57 @@ when MODE_P
 		$story_size -= 256;
 	end
 	diskimage_filename = File.join($TEMPDIR, "temp1.d64")
-	error = build_P(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, extended_tracks)
+	error = build_P(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks)
 when MODE_S1
 	diskimage_filename = File.join($TEMPDIR, "temp1.d64")
-	error = build_S1(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
+	error = build_S1(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
 when MODE_S2
 	d64_filename_1 = File.join($TEMPDIR, "temp1.d64")
 	d64_filename_2 = File.join($TEMPDIR, "temp2.d64")
-	error = build_S2(storyname, d64_filename_1, d64_filename_2, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
+	error = build_S2(storyname, d64_filename_1, d64_filename_2, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
 when MODE_D2
 	d64_filename_1 = File.join($TEMPDIR, "temp1.d64")
 	d64_filename_2 = File.join($TEMPDIR, "temp2.d64")
-	error = build_D2(storyname, d64_filename_1, d64_filename_2, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
+	error = build_D2(storyname, d64_filename_1, d64_filename_2, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
 when MODE_D3
 	d64_filename_1 = File.join($TEMPDIR, "temp1.d64")
 	d64_filename_2 = File.join($TEMPDIR, "temp2.d64")
 	d64_filename_3 = File.join($TEMPDIR, "temp3.d64")
 	error = build_D3(storyname, d64_filename_1, d64_filename_2, d64_filename_3, 
-		config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
+		build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
 when MODE_71
 	diskimage_filename = File.join($TEMPDIR, "temp1.d71")
-	error = build_71(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, reserve_dir_track)
+	error = build_71(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, reserve_dir_track)
 when MODE_71D
 	d71_filename_1 = File.join($TEMPDIR, "temp1.d71")
 	d71_filename_2 = File.join($TEMPDIR, "temp2.d71")
-	error = build_71D(storyname, d71_filename_1, d71_filename_2, config_data.dup, vmem_data.dup, vmem_contents, 
+	error = build_71D(storyname, d71_filename_1, d71_filename_2, build_config_data, build_vmem_data, vmem_contents, 
 		preload_max_vmem_blocks, nil)
 when MODE_81
 	diskimage_filename = File.join($TEMPDIR, "temp1.d81")
-	error = build_81(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks)
+	error = build_81(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks)
 when MODE_ZIP
 	diskimage_filename = File.join($TEMPDIR, "temp1.zip")
-	error = build_zip(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks)
+	error = build_zip(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks)
 else
 	puts "Unsupported build mode."
 	exit 1
+end
+
+if $target == 'neo6502' && $VMEM && !error
+	neo_config_path = File.join(__dir__, 'storage', 'ozmoo.cfg')
+	neo_cfg_data = config_data.dup
+	neo_cfg_vmem = vmem_data.dup
+	limit_vmem_data(neo_cfg_vmem, 65535)
+	neo_cfg_data += neo_cfg_vmem
+	min_cfg_size = 512
+	if neo_cfg_data.length < min_cfg_size
+		neo_cfg_data += Array.new(min_cfg_size - neo_cfg_data.length, 0)
+	elsif (neo_cfg_data.length % 256) != 0
+		neo_cfg_data += Array.new(256 - (neo_cfg_data.length % 256), 0)
+	end
+	File.binwrite(neo_config_path, neo_cfg_data.pack('C*'))
+	puts "Wrote Neo6502 VMEM config sidecar: #{neo_config_path} (#{neo_cfg_data.bytesize} bytes)." if $verbose
 end
 
 if !error and auto_play then 

@@ -86,6 +86,7 @@ neo_api_fn_clear_screen = $0c
 
 neo_api_fn_file_open  = $04
 neo_api_fn_file_close = $05
+neo_api_fn_file_seek  = $06
 neo_api_fn_load_file  = $02
 neo_api_fn_store_file = $03
 neo_api_fn_file_delete= $0d

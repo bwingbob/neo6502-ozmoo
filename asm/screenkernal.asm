@@ -780,10 +780,18 @@ s_printchar
 	cmp #20
 	bne .neo_not_delete
 	jsr .neo_flush_word
-	lda #12
+	lda zp_screencolumn
+	beq .neo_delete_ignore
+	dec zp_screencolumn
+	lda #8
+	jsr neo_vector_writechar
+	lda #$20
 	jsr neo_vector_writechar
 	lda #8
 	jsr neo_vector_writechar
+	rts
+
+.neo_delete_ignore
 	rts
 
 .neo_not_delete

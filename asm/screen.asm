@@ -26,6 +26,30 @@ cursor_column !byte 0,0,0
 ;	bpl + ; Always branch
 init_screen_colours
 	jsr s_init
+	!ifdef TARGET_NEO6502 {
+		lda zcolours + FGCOL
+		jsr s_set_text_colour
+		lda zcolours + BGCOL
+		+SetBackgroundColour
+		+SetBorderColour
+	!if CURSORCOL = 1 {
+		lda zcolours + FGCOL
+	} else {
+		lda zcolours + CURSORCOL
+	}
+		sta current_cursor_colour
+	!ifdef Z5PLUS {
+		; store default colours in header
+		lda #BGCOL
+		ldy #header_default_bg_colour
+		jsr write_header_byte
+		lda #FGCOL
+		ldy #header_default_fg_colour
+		jsr write_header_byte
+	}
+		lda #147
+		jmp s_printchar
+	}
 	; calculate the position for the more prompt
 	; (self modifying code since we don't want to
 	; ZP space is limited)

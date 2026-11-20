@@ -47,6 +47,39 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 - Exercise both v6 and non-v6 baselines (`testz6.inf`/frotz comparison, `examples/dejavu.z3`, `test/praxix.z5`).
 - Keep manual/doc changes in sync with `documentation/manual/` sources.
 
+## Neo6502 emulator findings (from current port work)
+
+- Neo text output is currently most stable through the target-specific path in `asm/screenkernal.asm` (`.neo_printchar`), with `TARGET_NEO6502` bypass in `printchar_buffered` (`asm/screen.asm`). Re-enabling the generic buffered path for Neo has repeatedly caused one-character-per-line regressions.
+- The Neo console path should output plain character bytes (masked with `#$7f`) rather than C64 screen codes. Keep Neo-specific character conversion behavior isolated in `TARGET_NEO6502` branches.
+- Current verified geometry for emulator/runtime behavior is **53x30** (`SCREEN_WIDTH=53`, `SCREEN_HEIGHT=30` in `asm/constants-neo6502.asm`).
+- Newline handling that currently works for this path is CR-based (`#13`) in Neo emit routines. Treat CR/LF combinations as platform-sensitive and verify in emulator before changing.
+- Prompt/input echo reliability depends on immediate echo during input mode; keep input-mode handling separate from story-text wrapping logic.
+- Avoid stack manipulation side effects inside Neo print routines (extra `PLA/PHA` in mid-flow caused severe output corruption during testing).
+- ACME branch distance is a recurring risk in large target-specific blocks; prefer short local conditional branches plus explicit `jmp` fallbacks when needed.
+
+### Quick runtime verification used in this repo
+
+- Build + run smoke check used repeatedly during Neo debugging:
+  - `env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5`
+- Emulator command path used by current build flow:
+  - `./neo6502/neo temp/ozmoo-neo.bin@801 cold`
+- Functional runtime check used as acceptance:
+  - At prompt, run `all` in Praxix and confirm it completes with "all tests passed".
+
+### Debugger notes (Neo6502 + ACME)
+
+- `temp/acme_labels.txt` is build-artifact-specific. Always rebuild first, then debug with labels from that exact build output.
+- If code layout changes (especially in `asm/screenkernal.asm` Neo blocks), label addresses and branch distances change; refresh labels before stepping/inspecting symbols.
+- Prefer debugging Neo text issues from `.neo_printchar` and its helpers (`.neo_flush_word`, `.neo_emit_newline`) rather than generic buffered output paths.
+- When behavior differs between build-only and emulator runtime, validate against the same produced binaries loaded by:
+  - `./neo6502/neo temp/ozmoo-neo.bin@801 cold`
+- For runtime regressions, use Praxix prompt-driven checks (`help`, `all`) as fast end-to-end assertions after single-file assembly changes.
+
+## Next session reminder
+
+- Priority next step: implement Neo6502 VM/paging support so larger stories (for example `examples/minizork.z3`) can build/run without the current mode-P in-memory size failure.
+- Current known blocker: Neo target is currently restricted to build mode `P`, which requires the whole story to fit in RAM.
+
 ## External references for Neo6502 porting
 
 - [Neo6502 documentation](https://neo6502.com/)
