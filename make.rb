@@ -3471,8 +3471,9 @@ unless mode
 end
 
 if mode == MODE_P
-	# In this mode, we don't use the vmem buffer for holding vmem data. However, the
-	# splash screen resides in the buffer too. By default it's 2 pages in this mode.
+	# For most targets, this mode doesn't use the vmem buffer for holding vmem
+	# data. Neo6502 is the exception: its P build is the host for disk-backed
+	# VMEM. The splash screen resides in the buffer too; by default it's 2 pages.
 	if $splash_wait == "0"
 		$CACHE_PAGES = 0 # We don't have any use for the cache whatsoever
 	else
@@ -3586,7 +3587,11 @@ if $sound_path
 #	puts $sound_files
 end
 
-$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16')
+# Neo6502 uses flat, disk-backed VMEM in its P build. Keep P as the
+# whole-story-in-memory mode for every other target. REU and OPTIMIZE_VMEM are
+# enabled only for the C64/C128 above, so Neo doesn't inherit either here.
+$VMEM = ($target == 'neo6502') ||
+	(mode != MODE_P && $target != 'mega65' && $target != 'x16')
 
 $GENERALFLAGS.push('DANISH_CHARS') if $char_map == 'da'
 $GENERALFLAGS.push('SWEDISH_CHARS') if $char_map == 'sv'
@@ -4272,8 +4277,8 @@ if preload_data then
 	vmem_data = [
 		total_length / 256,
 		total_length % 256,
-		preload_data.length, # Number of suggested blocks
-		preload_data.length, # Number of preloaded blocks (May change later due to lack of space on disk)
+		total_storyfile_blocks, # Number of suggested blocks (all story blocks)
+		[$statmem_blocks, preload_data.length].min, # Number of preloaded blocks (statmem clamped to disk budget)
 		]
 	lowbytes = []
 	preload_data.each do |block|
@@ -4292,8 +4297,8 @@ else # No preload data available
 	vmem_data = [
 		total_length / 256,
 		total_length % 256,
-		mapped_vmem_blocks, # Number of suggested blocks
-		mapped_vmem_blocks, # Number of preloaded blocks (May change later due to lack of space on disk)
+		total_storyfile_blocks, # Number of suggested blocks (all story blocks)
+		[$statmem_blocks, mapped_vmem_blocks].min, # Number of preloaded blocks (statmem clamped to VMEM budget)
 		]
 	lowbytes = []
 	mapped_vmem_blocks.times do |i|
@@ -4393,7 +4398,7 @@ if $target == 'neo6502' && $VMEM && !error
 		neo_cfg_data += Array.new(256 - (neo_cfg_data.length % 256), 0)
 	end
 	File.binwrite(neo_config_path, neo_cfg_data.pack('C*'))
-	puts "Wrote Neo6502 VMEM config sidecar: #{neo_config_path} (#{neo_cfg_data.bytesize} bytes)." if $verbose
+	puts "Wrote Neo6502 VMEM config sidecar: #{neo_config_path} (#{neo_cfg_data.length} bytes)." if $verbose
 end
 
 if !error and auto_play then 
