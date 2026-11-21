@@ -2634,6 +2634,13 @@ deletable_init
 }
 	sta vmap_max_entries
 
+!ifdef TARGET_NEO6502 {
+	; Neo6502 has a flat RAM model (no C64/C128-style banked I/O/ROM window),
+	; so all VMEM blocks are treated as directly addressable/unbanked.
+	lda vmap_max_entries
+	sta vmap_unbanked_blocks
+}
+
 !ifdef TARGET_C128 {
 	jsr c128_move_dynmem_and_calc_vmem
 	jsr init_screen_colours

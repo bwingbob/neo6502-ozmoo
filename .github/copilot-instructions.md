@@ -54,6 +54,9 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 - Current verified geometry for emulator/runtime behavior is **53x30** (`SCREEN_WIDTH=53`, `SCREEN_HEIGHT=30` in `asm/constants-neo6502.asm`).
 - Newline handling that currently works for this path is CR-based (`#13`) in Neo emit routines. Treat CR/LF combinations as platform-sensitive and verify in emulator before changing.
 - Prompt/input echo reliability depends on immediate echo during input mode; keep input-mode handling separate from story-text wrapping logic.
+- Neo keyboard backspace/delete may arrive as `$08`/`$7f`; normalize to Ozmoo delete code `20` in the Neo KERNAL adapter (`asm/neo6502-morpheus.asm`) so line editing works.
+- For Neo prompt editing, delete must erase one character (`BS`, space, `BS`) and must not emit clear-screen control (`12`); keep this behavior in the Neo print path (`asm/screenkernal.asm`).
+- Neo KERNAL `CLOSE` should tolerate defensive closes of unopened channels (for example lfn 15/2/255) and avoid cascading into false disk-error handling.
 - Avoid stack manipulation side effects inside Neo print routines (extra `PLA/PHA` in mid-flow caused severe output corruption during testing).
 - ACME branch distance is a recurring risk in large target-specific blocks; prefer short local conditional branches plus explicit `jmp` fallbacks when needed.
 
@@ -61,6 +64,8 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 
 - Build + run smoke check used repeatedly during Neo debugging:
   - `env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5`
+- Current Neo baseline is mode `P` only; `-p` preload flags are not compatible with this path.
+- Neo sidecar output expects a writable `storage/` directory for `ozmoo.story`/`ozmoo.cfg`.
 - Emulator command path used by current build flow:
   - `./neo6502/neo temp/ozmoo-neo.bin@801 cold`
 - Functional runtime check used as acceptance:

@@ -1950,7 +1950,7 @@ def build_P(storyname, diskimage_filename, config_data, vmem_data, vmem_contents
 	
 	diskfilename = "#{$target}_#{storyname}.d64"
 	
-	if $dynmem_and_vmem_size_bank_0 < $story_size
+	if not ($VMEM and $target == 'neo6502') and $dynmem_and_vmem_size_bank_0 < $story_size
 		puts "#{$dynmem_and_vmem_size_bank_0} < #{$story_size}"
 		puts "ERROR: The whole story doesn't fit in memory. Please try another build mode."
 		exit 1
@@ -3586,7 +3586,7 @@ if $sound_path
 #	puts $sound_files
 end
 
-$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16' && $target != 'neo6502')
+$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16')
 
 $GENERALFLAGS.push('DANISH_CHARS') if $char_map == 'da'
 $GENERALFLAGS.push('SWEDISH_CHARS') if $char_map == 'sv'

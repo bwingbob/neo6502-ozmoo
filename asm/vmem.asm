@@ -90,6 +90,8 @@ read_byte_at_z_address
 	bcs .read_under_rom
 }
 .return_result
+	lda #0
+	sta mempointer
 	+before_dynmem_read
 	lda (mempointer),y
 	+after_dynmem_read
@@ -113,6 +115,8 @@ read_byte_at_z_address
 .read_under_rom
 	+disable_interrupts
 	+set_memory_all_ram_unsafe
+	lda #0
+	sta mempointer
 	lda (mempointer),y
 	+set_memory_no_basic
 	+enable_interrupts
@@ -168,10 +172,18 @@ read_byte_at_z_address
 ; will store in datasette_buffer
 ;
 
+; Keep VMEM blocks at 512 bytes (two pages). This is the sweet spot for the
+; Neo target's constrained vmap entry budget: with 204 bytes of vmap storage
+; (102 entries), 512-byte blocks map ~51 KB of resident VMEM.
 vmem_blocksize = 512
 vmem_indiv_block_mask = >(vmem_blocksize - 1)
 vmem_block_pagecount = vmem_blocksize / 256
 vmap_max_size = (vmap_buffer_end - vmap_buffer_start) / 2
+!ifdef TARGET_NEO6502 {
+	!if vmem_blocksize <> 512 {
+		!error "TARGET_NEO6502 requires vmem_blocksize = 512"
+	}
+}
 ; If we go past this limit we get in trouble, since we overflow the memory area we can use. 
 ; vmap_max_entries	!byte 0 ; Moved to ZP
 ; vmap_used_entries	!byte 0 ; Moved to ZP
@@ -635,8 +647,10 @@ load_blocks_from_index
 	sta readblocks_mempos + 1
 !ifndef TARGET_PLUS4 {
 	tay ; This value need to be in y if we jump to load_blocks_from_index_using_cache
+	!ifndef TARGET_NEO6502 {
 	cmp #first_banked_memory_page
 	bcs load_blocks_from_index_using_cache
+	}
 }
 	lda #vmem_block_pagecount ; number of blocks
 	sta readblocks_numblocks
@@ -789,7 +803,9 @@ read_byte_at_z_address
 	txa
 	adc #>story_start
 	sta mempointer + 1
-	bne .read_and_return_value ; Always branch
+	lda #0
+	sta mempointer
+	jmp .read_and_return_value
 }	
 .non_dynmem
 	sty mempointer_y
@@ -1164,6 +1180,9 @@ read_byte_at_z_address
 	lda vmap_c64_offset_bank
 	bne +
 }
+	!ifdef TARGET_NEO6502 {
+	jmp .cant_be_in_cache
+	}
 	lda vmap_c64_offset
 	cmp #first_banked_memory_page
 	bcc .cant_be_in_cache
@@ -1262,6 +1281,9 @@ read_byte_at_z_address
 	cpy #0
 	bne .swappable_memory
 }
+	!ifdef TARGET_NEO6502 {
+	jmp .unswappable
+	}
 	cmp #first_banked_memory_page
 	bcc .unswappable
 .swappable_memory
@@ -1325,6 +1347,8 @@ read_byte_at_z_address
 	adc vmap_c64_offset
 	sta mempointer + 1
 .return_result
+	lda #0
+	sta mempointer
 
 !ifdef OPTIMIZE_VMEM {
 	ldy opt_usage_map,x

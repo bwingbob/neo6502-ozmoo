@@ -12,9 +12,6 @@
 
 !zone neo6502_morpheus {
 
-neo_morpheus_group_console = 1 ; placeholder, verify against firmware docs
-neo_morpheus_group_fileio  = 2 ; placeholder, verify against firmware docs
-neo_morpheus_group_time    = 3 ; placeholder, verify against firmware docs
 
 neo_kernal_status       !byte 0
 neo_kernal_lfn          !byte 0
@@ -69,6 +66,8 @@ neo_kernal_api_call
 	; In: A = group, X = function, params already written
 	stx neo_api_function
 	sta neo_api_command
+	; Intentional 16-bit wraparound timeout: Y is the inner counter and X is the
+	; outer counter. This gives a bounded wait without touching additional state.
 	ldx #$ff
 	ldy #$ff
 neo_kernal_api_call_wait

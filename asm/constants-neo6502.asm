@@ -44,6 +44,18 @@ reu_filled            = $0255 ; 4 bytes
 vmap_buffer_start     = $0334
 vmap_buffer_end       = $0400 ; Last byte + 1. Should not be more than vmap_buffer_start + 512
 
+; Neo VMEM map area is intentionally constrained to the C64-compatible safe
+; low-memory window below screen RAM. vmem.asm derives:
+;   vmap_max_size = (vmap_buffer_end - vmap_buffer_start) / 2
+; so this window must be even-sized and <= 512 bytes.
+neo_vmap_buffer_bytes = vmap_buffer_end - vmap_buffer_start
+!if (neo_vmap_buffer_bytes & 1) <> 0 {
+	!error "Neo vmap buffer must be even-sized (two bytes per VMEM entry)"
+}
+!if neo_vmap_buffer_bytes > 512 {
+	!error "Neo vmap buffer exceeds 512-byte VMEM map limit"
+}
+
 
 ; --- I/O registers (bootstrap placeholders) ---
 reg_rasterline_highbit=	$d011
@@ -53,9 +65,13 @@ reg_bordercolour      = $d020
 reg_backgroundcolour  = $d021
 rasterline_for_scroll = 56
 
-; --- Neo6502 Morpheus API register placeholders ---
-; NOTE: These are adapter-layer placeholders. Verify against firmware docs before
-; implementing concrete calls.
+; --- Neo6502 Morpheus API constants ---
+; Synced against:
+; - neo6502/examples/assembly/neo6502.asm.inc
+; - https://www.neo6502.com/reference/api-listing/
+;
+; NOTE: neo6502.asm.inc currently uses ca65-style literals (e.g. #$01) and is
+; not directly ACME-compatible, so keep this ACME-native mirror in sync.
 neo_api_command       = $ff00
 neo_api_function      = $ff01
 neo_api_error         = $ff02
@@ -79,19 +95,31 @@ neo_api_group_fileio  = $03
 
 neo_api_fn_timer      = $01
 neo_api_fn_reset      = $07
+
 neo_api_fn_read_char  = $01
 neo_api_fn_console_status = $02
+neo_api_fn_read_line  = $03
+neo_api_fn_define_char = $05
 neo_api_fn_write_char = $06
+neo_api_fn_set_cursor_pos = $07
+neo_api_fn_screen_size = $09
+neo_api_fn_insert_line = $0a
+neo_api_fn_delete_line = $0b
 neo_api_fn_clear_screen = $0c
+neo_api_fn_cursor_pos = $0d
+neo_api_fn_clear_region = $0e
+neo_api_fn_set_text_color = $0f
 
+neo_api_fn_load_file  = $02
+neo_api_fn_store_file = $03
 neo_api_fn_file_open  = $04
 neo_api_fn_file_close = $05
 neo_api_fn_file_seek  = $06
-neo_api_fn_load_file  = $02
-neo_api_fn_store_file = $03
-neo_api_fn_file_delete= $0d
+neo_api_fn_file_tell  = $07
 neo_api_fn_file_read  = $08
 neo_api_fn_file_write = $09
+neo_api_fn_file_size  = $0a
+neo_api_fn_file_delete= $0d
 
 neo_api_file_mode_read              = $00
 neo_api_file_mode_write             = $01
@@ -99,6 +127,8 @@ neo_api_file_mode_readwrite         = $02
 neo_api_file_mode_readwrite_create  = $03
 
 neo_api_error_ok   = $00
+; TODO(neo6502): Confirm canonical EOF error code for API_ERROR via docs/runtime
+; probing. Current adapter behavior expects $02 for EOF.
 neo_api_error_eof  = $02
 
 ; --- Neo6502 Morpheus adapter bindings ---
