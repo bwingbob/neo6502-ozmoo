@@ -547,4 +547,73 @@ neo_kernal_delay_1ms_inner
 neo_kernal_reset
 	jmp basic_reset
 
+; --- 16-bit Morpheus seek/read primitives for VMEM paging ---
+
+neo_kernal_seek_file
+	; Seek to 16-bit offset. Inputs: A=LFN, X=seek-low, Y=seek-high.
+	; Parameter placement per neo_readblock convention:
+	; param0=A (LFN), param1=0, param2=X (offset low), param3=Y (offset high), param4=0, param5=0.
+	sta neo_api_param0
+	stx neo_api_param2
+	sty neo_api_param3
+	lda #0
+	sta neo_api_param1
+	sta neo_api_param4
+	sta neo_api_param5
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_seek
+	jsr neo_kernal_api_call
+	rts
+
+neo_kernal_read_file
+	; Read from file. Inputs: A=LFN, X=dest low, Y=dest high, neo_kernal_size=requested count (low/high).
+	; Parameter placement per neo_readblock convention:
+	; param0=A (LFN), param1=X (dest low), param2=Y (dest high),
+	; param3=size_low (from neo_kernal_size), param4=size_high (from neo_kernal_size+1), param5=0.
+	sta neo_api_param0
+	stx neo_api_param1
+	sty neo_api_param2
+	lda neo_kernal_size
+	sta neo_api_param3
+	lda neo_kernal_size + 1
+	sta neo_api_param4
+	lda #0
+	sta neo_api_param5
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_read
+	jsr neo_kernal_api_call
+	bcs neo_kernal_read_file_error
+
+; Compare the returned 16-bit count with the requested count.
+	lda neo_api_param3
+	cmp neo_kernal_size
+	bne neo_kernal_read_file_short
+	lda neo_api_param4
+	cmp neo_kernal_size + 1
+	bne neo_kernal_read_file_short
+
+neo_kernal_read_file_success
+	lda #0
+	sta neo_kernal_status
+	clc
+	rts
+
+neo_kernal_read_file_short
+	; Short read or EOF: copy the real returned count and report EOF.
+	lda neo_api_param3
+	sta neo_kernal_size
+	lda neo_api_param4
+	sta neo_kernal_size + 1
+
+neo_kernal_read_file_eof
+	lda #neo_api_error_eof
+	sta neo_kernal_status
+	sec
+	rts
+
+neo_kernal_read_file_error
+	; API error or timeout. Preserve status from neo_kernal_api_call and return C set.
+	sec
+	rts
+
 }
