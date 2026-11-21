@@ -4380,9 +4380,14 @@ end
 
 	if $target == 'neo6502'
 		neo_story_path = File.join(__dir__, 'storage', 'ozmoo.story')
-		neo_story_data = $VMEM ? vmem_contents : ($story_file_data || '')
+		neo_story_data = $story_file_data || ''
+		FileUtils.mkdir_p(File.dirname(neo_story_path))
+		if neo_story_data.empty?
+			puts "ERROR: Neo6502 story sidecar would be empty."
+			exit 1
+		end
 		File.binwrite(neo_story_path, neo_story_data)
-		puts "Wrote Neo6502 VMEM sidecar: #{neo_story_path} (#{neo_story_data.bytesize} bytes)." if $verbose
+		puts "Wrote Neo6502 story sidecar: #{neo_story_path} (#{neo_story_data.bytesize} bytes)." if $verbose
 	end
 
 ############################# End of moved block
@@ -4444,11 +4449,19 @@ else
 end
 
 if $target == 'neo6502' && $VMEM && !error
-	neo_config_path = File.join(__dir__, 'storage', 'ozmoo.cfg')
+	if vmem_data.length > 512
+		puts "ERROR: Neo6502 VMEM map is #{vmem_data.length} bytes; maximum is 512 bytes."
+		exit 1
+	end
+	storage_dir = File.join(__dir__, 'storage')
+	FileUtils.mkdir_p(storage_dir)
+	neo_config_path = File.join(storage_dir, 'ozmoo.cfg')
 	neo_cfg_data = config_data.dup
 	neo_cfg_vmem = vmem_data.dup
-	limit_vmem_data(neo_cfg_vmem, 65535)
-	neo_cfg_data += neo_cfg_vmem
+	if neo_cfg_vmem.length > 0
+		limit_vmem_data(neo_cfg_vmem, 65535)
+		neo_cfg_data += neo_cfg_vmem
+	end
 	min_cfg_size = 512
 	if neo_cfg_data.length < min_cfg_size
 		neo_cfg_data += Array.new(min_cfg_size - neo_cfg_data.length, 0)
