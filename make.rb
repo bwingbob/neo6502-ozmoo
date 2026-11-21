@@ -1573,6 +1573,8 @@ def read_labels(label_file_name)
 		$program_end_address = $1.to_i(16) if line =~ /\tprogram_end\t=\s*\$(\w{3,4})\b/;
 		$loader_pic_start = $1.to_i(16) if line =~ /\tloader_pic_start\t=\s*\$(\w{3,4})\b/;
 		$config_load_address = $1.to_i(16) if line =~ /\tconfig_load_address\t=\s*\$(\w{3,4})\b/;
+		$neo_vmap_buffer_start = $1.to_i(16) if line =~ /\tvmap_buffer_start\s*=\s*\$(\w{3,4})\b/;
+		$neo_vmap_buffer_end = $1.to_i(16) if line =~ /\tvmap_buffer_end\s*=\s*\$(\w{3,4})\b/;
 	end
 end
 
@@ -1871,9 +1873,43 @@ end
 
 def limit_vmem_data_preload(vmem_data)
 #	puts "%%% #{$dynmem_and_vmem_size_bank_0_max}, #{vmem_data[3]} #{$dynmem_blocks} #{$VMEM_BLOCKSIZE}"
-	if $dynmem_and_vmem_size_bank_0_max < (vmem_data[3] + $dynmem_blocks) * $VMEM_BLOCKSIZE
-		vmem_data[3] = $dynmem_and_vmem_size_bank_0_max / $VMEM_BLOCKSIZE - $dynmem_blocks
+	max_bytes = if $target == 'neo6502' && $VMEM && $neo_resident_vmem_blocks
+		($neo_resident_vmem_blocks + $dynmem_blocks) * $VMEM_BLOCKSIZE
+	else
+		$dynmem_and_vmem_size_bank_0_max
 	end
+	if max_bytes < (vmem_data[3] + $dynmem_blocks) * $VMEM_BLOCKSIZE
+		vmem_data[3] = [max_bytes / $VMEM_BLOCKSIZE - $dynmem_blocks, 0].max
+	end
+end
+
+# Neo6502 uses a flat 16-bit address space with no banks, REU or memory windows.
+# This mirrors the runtime calculation in asm/ozmoo.asm:
+#   vmap_first_ram_page = nonstored_pages + >story_start
+#   vmap_max_entries    = min((VMEM_END_PAGE - vmap_first_ram_page) / 2,
+#                             vmap_max_size)
+# where VMEM_END_PAGE is $00 (the end of the 16-bit address space) for Neo and
+# vmap_max_size is (vmap_buffer_end - vmap_buffer_start) / 2 = (0x400-0x334)/2.
+# Stack, cache and config live below story_start in the Neo layout, so the
+# resident VMEM range is simply story_start+dynmem .. $ffff.
+def calc_neo_vmap_max_entries()
+	nonstored_pages = $dynmem_blocks * ($VMEM_BLOCKSIZE / 256)
+	vmap_first_ram_page = (nonstored_pages + ($storystart >> 8)) & 0xff
+	neo_vmem_end_page = 0x100          # VMEM_END_PAGE = $00 means top of 64 KB
+	# vmap_max_size from constants-neo6502.asm: (vmap_buffer_end - vmap_buffer_start)/2.
+	# Fall back to the known defaults if the labels file did not expose them.
+	vmap_start = $neo_vmap_buffer_start || 0x334
+	vmap_end = $neo_vmap_buffer_end || 0x400
+	neo_vmap_max_size = [((vmap_end - vmap_start) / 2), 0].max
+	available_pages = neo_vmem_end_page - vmap_first_ram_page
+	return 0 if available_pages <= 0
+	entries = [available_pages / 2, neo_vmap_max_size].min
+	# The high-byte mask bounds the number of distinct 512-byte block numbers
+	# that can be encoded in a vmap entry.
+	if $vmem_highbyte_mask && $vmem_highbyte_mask > 0
+		entries = [entries, 0x100 * ($vmem_highbyte_mask + 1)].min
+	end
+	[entries, 0].max
 end
 
 def	sort_vmem_data(vmem_data, first_block_to_sort, last_block_to_sort)
@@ -4225,6 +4261,18 @@ if reu_boost == 1 and $target == 'c64' and $unbanked_vmem_blocks * $VMEM_BLOCKSI
 	exit 1		
 end
 
+# Neo6502-only resident layout.  Do not use the C64/C128 bank-0 or REU figures
+# above: they assume banked memory that Neo does not have.  The runtime derives
+# its VMEM map from the same 16-bit address-space calculation.
+if $target == 'neo6502' && $VMEM
+	$neo_vmap_max_entries = calc_neo_vmap_max_entries()
+	$neo_resident_vmem_blocks = [$neo_vmap_max_entries, $statmem_blocks].min
+	puts "Neo VMEM map capacity: #{$neo_vmap_max_entries} entries, resident statmem blocks: #{$neo_resident_vmem_blocks}." if $verbose
+	if $neo_resident_vmem_blocks <= 0
+		puts "WARNING: No statmem can remain resident for Neo6502; VMEM will page all statmem from storage." if $verbose
+	end
+end
+
 config_data = 
 [$BUILD_ID].pack("I>").unpack("CCCC") + 
 [
@@ -4241,7 +4289,10 @@ save_slots, # Save slots, change later if wrong
 total_storyfile_blocks = $story_size / $VMEM_BLOCKSIZE
 mapped_vmem_blocks = 0 #all_vmem_blocks - $dynmem_blocks
 unless $DEBUGFLAGS.include?('PREOPT') then
-	if mode == MODE_P 
+	if $target == 'neo6502' && $VMEM
+		# Neo uses its flat 16-bit resident budget, not C64 bank-0 disk layout.
+		mapped_vmem_blocks = $neo_resident_vmem_blocks
+	elsif mode == MODE_P 
 		mapped_vmem_blocks = total_storyfile_blocks - $dynmem_blocks
 	else
 #		puts "### #{$vmem_blocks_in_ram}, #{total_storyfile_blocks} - #{$dynmem_blocks}"
@@ -4277,7 +4328,7 @@ if preload_data then
 	vmem_data = [
 		total_length / 256,
 		total_length % 256,
-		total_storyfile_blocks, # Number of suggested blocks (all story blocks)
+		preload_data.length, # Number of suggested VMEM entries (matches array size)
 		[$statmem_blocks, preload_data.length].min, # Number of preloaded blocks (statmem clamped to disk budget)
 		]
 	lowbytes = []
@@ -4297,7 +4348,7 @@ else # No preload data available
 	vmem_data = [
 		total_length / 256,
 		total_length % 256,
-		total_storyfile_blocks, # Number of suggested blocks (all story blocks)
+		mapped_vmem_blocks, # Number of suggested VMEM entries (matches array size)
 		[$statmem_blocks, mapped_vmem_blocks].min, # Number of preloaded blocks (statmem clamped to VMEM budget)
 		]
 	lowbytes = []
@@ -4306,6 +4357,13 @@ else # No preload data available
 		lowbytes.push(($dynmem_blocks + i) * $VMEM_BLOCKSIZE / 256 / 2)
 	end
 	vmem_data += lowbytes;
+end
+
+# Clamp preload budget to the real Neo resident block budget.  The default
+# (2**17 / blocksize) and explicit -p values assume a C64-sized preload area.
+if $target == 'neo6502' && $VMEM && preload_max_vmem_blocks && $neo_resident_vmem_blocks && preload_max_vmem_blocks > $neo_resident_vmem_blocks
+	puts "Max preload blocks adjusted to Neo resident VMEM budget, from #{preload_max_vmem_blocks} to #{$neo_resident_vmem_blocks}."
+	preload_max_vmem_blocks = $neo_resident_vmem_blocks
 end
 
 if $target =~ /^(mega65|x16)$/
