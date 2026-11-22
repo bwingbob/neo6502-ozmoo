@@ -3082,6 +3082,40 @@ prepare_static_high_memory
 	lda (zp_temp),y
 	sta vmap_blocks_preloaded ; # of blocks already loaded
 
+!ifdef TARGET_NEO6502 {
+	; Neo: validate flat config VMEM metadata before using it
+	ldx vmap_used_entries
+	txa
+	asl
+	sta z_temp
+	lda #0
+	rol
+	sta z_temp + 1
+	lda z_temp
+	clc
+	adc #4
+	sta z_temp
+	bcc +
+	inc z_temp + 1
++
+	lda config_load_address + 16
+	cmp z_temp + 1
+	bne .neo_bad_config
+	lda config_load_address + 17
+	cmp z_temp
+	bne .neo_bad_config
+	lda vmap_blocks_preloaded
+	cmp vmap_used_entries
+	bcc .neo_config_ok
+	bne .neo_bad_config
+.neo_config_ok
+	jmp .neo_config_validated
+.neo_bad_config
+	lda #ERROR_CONFIG
+	jmp fatalerror
+.neo_config_validated
+}
+
 !if SUPPORT_REU = 1 {
 	; If using REU, suggested blocks will just be ignored
 	bit use_reu
