@@ -402,49 +402,38 @@ neo_open_config_file
 	rts
 
 neo_read_track_sector
+	; Neo config file is flat: seek offset = .sector * 256.
+	; .sector is an offset sector number; track/device are ignored.
 	jsr neo_open_config_file
 
 	lda #$03
-	sta neo_api_param0
-	lda #0
-	sta neo_api_param1
-	lda .sector
-	sta neo_api_param2
-	lda #0
-	sta neo_api_param3
-	lda #0
-	sta neo_api_param4
-	lda #neo_api_group_fileio
-	ldx #neo_api_fn_file_seek
-	jsr neo_kernal_api_call
+	ldx #$00
+	ldy .sector
+	jsr neo_kernal_seek_file
 	bcc .cfg_seek_ok
 	jmp is_error
 .cfg_seek_ok
 
+	lda #$00
+	sta neo_kernal_size
+	lda #$01
+	sta neo_kernal_size + 1
+
 	lda #$03
-	sta neo_api_param0
-	lda readblocks_mempos
-	sta neo_api_param1
-	lda readblocks_mempos + 1
-	sta neo_api_param2
-	lda #0
-	sta neo_api_param3
-	lda #1
-	sta neo_api_param4
-	lda #neo_api_group_fileio
-	ldx #neo_api_fn_file_read
-	jsr neo_kernal_api_call
+	ldx readblocks_mempos
+	ldy readblocks_mempos + 1
+	jsr neo_kernal_read_file
 	bcc .cfg_read_ok
 	jmp is_error
 .cfg_read_ok
+
 	lda #$03
 	jsr kernal_close
 	bcc +
 	jmp is_error
 
-	rts
-
 +
+	clc
 	rts
 
 neo_config_filename
