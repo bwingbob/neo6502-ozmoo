@@ -154,6 +154,90 @@ def expect_failure(storyfile, target, params, message, allow_successful_build, o
 	finalize_test(build_result, problem, outfiles)
 end
 
+# Neo sidecars are written to ../storage by make.rb. Clear them before every
+# Neo build so a stale file can never be mistaken for a fresh sidecar.
+def clear_neo_sidecars
+	['../storage/ozmoo.story', '../storage/ozmoo.cfg'].each do |path|
+		File.delete(path) if File.exist?(path)
+	end
+end
+
+def neo_vmem_config_ok?(path)
+	return false, "missing #{path}" unless File.exist?(path)
+
+	data = File.binread(path)
+	return false, "#{path} is #{data.length} bytes; expected at least 512" if data.length < 512
+	return false, "#{path} is not padded to a 256-byte boundary" unless (data.length % 256) == 0
+	disk_info_length = data.getbyte(4)
+	return false, "invalid disk-info length #{disk_info_length}" unless disk_info_length == 12
+
+	vmem_offset = 4 + disk_info_length
+	return false, "VMEM header offset #{vmem_offset} is outside #{path}" if vmem_offset + 4 > data.length
+
+	total = data.getbyte(vmem_offset) * 256 + data.getbyte(vmem_offset + 1)
+	entries = data.getbyte(vmem_offset + 2)
+	preload = data.getbyte(vmem_offset + 3)
+	return false, "VMEM entries must be non-zero" if entries == 0
+	return false, "VMEM header length #{total} != 4 + 2 * #{entries}" unless total == 4 + 2 * entries
+	return false, "preloaded blocks #{preload} exceed map entries #{entries}" if preload > entries
+	return false, "VMEM data (#{total} bytes) does not fit in #{path}" if vmem_offset + total > data.length
+
+	return true, nil
+end
+
+def validate_neo_sidecars(original_story_size)
+	story_path = '../storage/ozmoo.story'
+	cfg_path = '../storage/ozmoo.cfg'
+
+	unless File.exist?(story_path)
+		puts "EXPECTED FILE MISSING: #{story_path}"
+		return false
+	end
+
+	story_size = File.size(story_path)
+	story_ok = story_size >= original_story_size
+	puts "Neo story sidecar is #{story_size} bytes, smaller than source #{original_story_size}." unless story_ok
+
+	block_ok = (story_size % 512) == 0
+	puts "Neo story sidecar size #{story_size} is not a multiple of 512." unless block_ok
+
+	cfg_ok, cfg_problem = neo_vmem_config_ok?(cfg_path)
+	puts "SIDECAR CHECK FAILED: #{cfg_problem}" unless cfg_ok
+
+	story_ok && block_ok && cfg_ok
+rescue => e
+	puts "SIDECAR CHECK FAILED: #{e.message}"
+	false
+end
+
+def expect_neo_vmem_success(storyfile, params, diskimage)
+	clear_neo_sidecars
+
+	build_result = run_command("\n(EXPECT NEO VMEM SUCCESS) ", storyfile, 'neo6502', "-v #{params}".strip)
+	problem = false
+	problem = true if build_result =~ /^ERROR:/
+	problem = true if build_result =~ /^WARNING:/
+	problem = true if build_result !~ /^Successfully built game /
+
+	if build_result =~ /ERROR: The whole story doesn't fit in memory\./
+		puts "Mode-P whole-story rejection occurred."
+		problem = true
+	end
+
+	unless build_result =~ /Neo6502 VMEM: total story bytes/
+		puts "Neo VMEM diagnostics were not printed."
+		problem = true
+	end
+
+	problem = true unless validate_neo_sidecars(File.size(storyfile))
+	clear_neo_sidecars
+
+	finalize_test(build_result, problem, {"#{diskimage}.d64" => 1})
+end
+
+# Neo emulator runtime checks are intentionally kept out of this build-only
+# suite; they belong in a separately configured job with NEO_EMULATOR set.
+
 minizork = '../examples/minizork.z3'
 dragontroll = '../examples/dragontroll.z5'
 
@@ -202,6 +286,9 @@ expect_success(minizork, 'c128', '-sb:12 -rb:0', {
 
 expect_success(minizork, 'mega65', '-u:0', {
 	'mega65_minizork.d81' => {'autoboot.c65' => [35, 43], 'zcode' => 206, '*FREE' => [2911, 2919]}})
+
+expect_neo_vmem_success('../test/praxix.z5', '-P', 'neo6502_praxix')
+expect_neo_vmem_success(minizork, '-P', 'neo6502_minizork')
 
 puts "\nTests passed: #{$passed}"
 puts "\nTests not passed: #{$not_passed}"
