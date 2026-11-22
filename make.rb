@@ -1896,8 +1896,8 @@ def calc_neo_vmap_max_entries()
 	nonstored_pages = $dynmem_blocks * ($VMEM_BLOCKSIZE / 256)
 	vmap_first_ram_page = (nonstored_pages + ($storystart >> 8)) & 0xff
 	# Neo reserves top pages for Morpheus/firmware runtime state.
-	# Runtime uses VMEM_END_PAGE = $fe, so mirror that here.
-	neo_vmem_end_page = 0xfe
+	# Runtime uses VMEM_END_PAGE = $fc, so mirror that here.
+	neo_vmem_end_page = 0xfc
 	# vmap_max_size from constants-neo6502.asm: (vmap_buffer_end - vmap_buffer_start)/2.
 	# Fall back to the known defaults if the labels file did not expose them.
 	vmap_start = $neo_vmap_buffer_start || 0x334

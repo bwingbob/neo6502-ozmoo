@@ -97,8 +97,8 @@
 	TARGET_ASSIGNED = 1
 	SUPPORT_REU = 0
 	; Neo runtime uses top memory for Morpheus/firmware state.
-	; Keep VMEM/RAM residency below $fe00.
-	VMEM_END_PAGE = $fe
+	; Keep VMEM/RAM residency below $fc00; $fc00-$fdff is the kernel ROM window.
+	VMEM_END_PAGE = $fc
 	!ifndef SLOW {
 		SLOW = 1
 	}

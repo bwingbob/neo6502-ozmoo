@@ -92,6 +92,52 @@ neo_kernal_api_call_ok
 	clc
 	rts
 
+; Console helpers used by the screen layer. ACME keeps these labels global even
+; though this unit is inside a !zone; see constants-neo6502.asm for the same
+; pattern used by kernal_getchar.
+neo_set_cursor_pos
+	; In:  X = row (Y), Y = column (X)
+	; Out: A/X/Y clobbered
+	pha
+	txa
+	pha
+	tya
+	sta neo_api_param0
+	pla
+	sta neo_api_param1
+	lda #neo_api_group_console
+	ldx #neo_api_fn_set_cursor_pos
+	jsr neo_kernal_api_call
+	pla
+	rts
+
+neo_delete_line
+	; In:  A = console row to delete
+	; Out: A/X/Y clobbered
+	pha
+	sta neo_api_param0
+	lda #neo_api_group_console
+	ldx #neo_api_fn_delete_line
+	jsr neo_kernal_api_call
+	pla
+	rts
+
+neo_clear_row
+	; In:  A = console row, Y = starting column
+	; Out: A/X/Y clobbered
+	pha
+	tya
+	sta neo_api_param0
+	pla
+	sta neo_api_param1
+	sta neo_api_param3
+	lda #SCREEN_WIDTH - 1
+	sta neo_api_param2
+	lda #neo_api_group_console
+	ldx #neo_api_fn_clear_region
+	jsr neo_kernal_api_call
+	rts
+
 neo_kernal_prepare_lpref_name
 	; Converts SETNAM state (len + ptr to plain bytes) into a length-prefixed
 	; string for Neo6502 file API calls.

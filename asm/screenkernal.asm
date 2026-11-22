@@ -478,6 +478,26 @@ s_init
 s_plot
 	; y=column (0-(SCREEN_WIDTH-1))
 	; x=row (0- (SCREEN_HEIGHT-1))
+!ifdef TARGET_NEO6502 {
+	; Ozmoo can reposition the cursor while a word is still buffered (the Z3
+	; status line does this when it right-aligns the score). Flush first so the
+	; buffered characters are written at the old position, not the new one.
+	; The flush uses A/X/Y and leaves carry set, so preserve both the requested
+	; row/column and the set/get flag across it.
+	php
+	pha
+	txa
+	pha
+	tya
+	pha
+	jsr .neo_flush_word
+	pla
+	tay
+	pla
+	tax
+	pla
+	plp
+}
 	bcc .set_cursor_pos
 	; get_cursor
 	ldx zp_screenrow
@@ -489,7 +509,17 @@ s_plot
 	ldx s_screen_height_minus_one
 +	stx zp_screenrow
 	sty zp_screencolumn
-	jmp .update_screenpos
+	jsr .update_screenpos
+!ifdef TARGET_NEO6502 {
+	; Keep the Neo console cursor in step with Ozmoo's software cursor. Without
+	; this, status-line writes stayed on the lower window's cursor line and the
+	; input prompt/score ended up mixed into the room description.
+	; update_screenpos clobbers X/Y, so reload the restored row/column here.
+	ldx zp_screenrow
+	ldy zp_screencolumn
+	jsr neo_set_cursor_pos
+}
+	rts
 
 s_set_text_colour
 !ifdef TARGET_NEO6502 {
@@ -765,6 +795,7 @@ s_printchar
 	lda #12
 	jsr neo_vector_writechar
 	lda #0
+	sta s_neo_word_len
 	sta zp_screencolumn
 	sta zp_screenrow
 	rts
@@ -783,10 +814,9 @@ s_printchar
 	lda zp_screencolumn
 	beq .neo_delete_ignore
 	dec zp_screencolumn
-	lda #8
-	jsr neo_vector_writechar
-	lda #$20
-	jsr neo_vector_writechar
+	; The Neo console treats #8 as backspace: it moves left and deletes the
+	; character at the cursor. The old BS/space/BS sequence also deleted the
+	; replacement space, which left stray characters on some wraps.
 	lda #8
 	jsr neo_vector_writechar
 	rts
@@ -874,16 +904,22 @@ s_printchar
 	rts
 
 .neo_emit_newline
-	lda #13
-	jsr neo_vector_writechar
 	lda #0
 	sta zp_screencolumn
 	inc zp_screenrow
 	lda zp_screenrow
 	cmp s_screen_height
-	bcc +
-	dec zp_screenrow
-+	rts
+	bcc .neo_newline_set_cursor
+	; Scroll only the lower window so the Z3 status line on row 0 survives.
+	lda s_screen_height_minus_one
+	sta zp_screenrow
+	lda window_start_row + 1
+	jsr neo_delete_line
+.neo_newline_set_cursor
+	ldx zp_screenrow
+	ldy #0
+	jsr neo_set_cursor_pos
+	rts
 
 .neo_flush_word
 	lda s_neo_word_len
@@ -1324,9 +1360,6 @@ s_scrolled_lines !byte 0
 	sta s_current_screenpos_row ; force recalculation
 s_erase_line
 	; registers: a,x,y
-!ifdef TARGET_NEO6502 {
-	rts
-}
 	lda zp_screenrow
 	cmp s_screen_height
 	bcc +
@@ -1336,6 +1369,15 @@ s_erase_line
 	jsr .update_screenpos
 	ldy #0
 .erase_line_from_any_col	
+!ifdef TARGET_NEO6502 {
+	; Neo has no writable screen RAM. Clear the console row through the API;
+	; without this, erase_window left the previous prompt and input line behind.
+	lda zp_screenrow
+	cmp s_screen_height
+	bcs .done_erasing
+	jsr neo_clear_row
+	jmp .done_erasing
+}
 !ifdef TARGET_C128 {
 	bit COLS_40_80
 	bmi .col80_5
