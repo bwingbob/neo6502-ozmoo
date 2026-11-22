@@ -3378,6 +3378,19 @@ end
 
 write_signature = 2 unless write_signature # Default to non-infocom setting
 
+# Neo6502 uses flat, disk-backed VMEM and must fail fast on incompatible
+# C64/C128 memory options before they can leak into the assembly defines.
+if $target == 'neo6502'
+	if reu_boost == 1 or $GENERALFLAGS.any? { |flag| flag =~ /REU/i }
+		puts "ERROR: REU is not supported by Neo6502 VMEM."
+		exit 1
+	end
+	if optimize_vmem == 1 or $GENERALFLAGS.include?('OPTIMIZE_VMEM')
+		puts "ERROR: OPTIMIZE_VMEM is not supported by Neo6502 VMEM."
+		exit 1
+	end
+end
+
 if $target =~ /^c(64|128)$/ and reu_boost == nil
 	reu_boost = 1
 end
@@ -3628,6 +3641,14 @@ end
 # enabled only for the C64/C128 above, so Neo doesn't inherit either here.
 $VMEM = ($target == 'neo6502') ||
 	(mode != MODE_P && $target != 'mega65' && $target != 'x16')
+
+if $target == 'neo6502' && $VMEM
+	c128_bank_flags = $GENERALFLAGS.select { |flag| flag =~ /C128|MMU|BANK/i }
+	unless c128_bank_flags.empty?
+		puts "ERROR: C128 bank constants are not supported by Neo6502 VMEM: #{c128_bank_flags.join(', ')}."
+		exit 1
+	end
+end
 
 $GENERALFLAGS.push('DANISH_CHARS') if $char_map == 'da'
 $GENERALFLAGS.push('SWEDISH_CHARS') if $char_map == 'sv'
@@ -4266,6 +4287,9 @@ end
 # its VMEM map from the same 16-bit address-space calculation.
 if $target == 'neo6502' && $VMEM
 	$neo_vmap_max_entries = calc_neo_vmap_max_entries()
+	if $statmem_blocks > $neo_vmap_max_entries && $verbose
+		puts "Neo VMEM resident statmem blocks clamped from #{$statmem_blocks} to #{$neo_vmap_max_entries} (vmap_max_entries)."
+	end
 	$neo_resident_vmem_blocks = [$neo_vmap_max_entries, $statmem_blocks].min
 	puts "Neo VMEM map capacity: #{$neo_vmap_max_entries} entries, resident statmem blocks: #{$neo_resident_vmem_blocks}." if $verbose
 	if $neo_resident_vmem_blocks <= 0
@@ -4396,6 +4420,11 @@ if $VMEM
 	limit_vmem_data_preload(vmem_data)
 end
 
+if $target == 'neo6502' && $VMEM && $neo_vmap_max_entries && vmem_data[2] > $neo_vmap_max_entries
+	puts "ERROR: Neo6502 VMEM map has #{vmem_data[2]} entries, exceeding vmap_max_entries (#{$neo_vmap_max_entries})."
+	exit 1
+end
+
 if $VMEM and preload_max_vmem_blocks and preload_max_vmem_blocks > vmem_data[3] then
 	puts "Max preload blocks adjusted to total vmem size, from #{preload_max_vmem_blocks} to #{vmem_data[3]}."
 	preload_max_vmem_blocks = vmem_data[3]
@@ -4470,6 +4499,16 @@ if $target == 'neo6502' && $VMEM && !error
 	end
 	File.binwrite(neo_config_path, neo_cfg_data.pack('C*'))
 	puts "Wrote Neo6502 VMEM config sidecar: #{neo_config_path} (#{neo_cfg_data.length} bytes)." if $verbose
+	if $verbose
+		story_bytes = $story_file_data.length
+		story_blocks = (story_bytes + $VMEM_BLOCKSIZE - 1) / $VMEM_BLOCKSIZE
+		dynmem_bytes = $dynmem_blocks * $VMEM_BLOCKSIZE
+		map_bytes = vmem_data[0] * 256 + vmem_data[1]
+		paged_statmem_blocks = [$statmem_blocks - vmem_data[3], 0].max
+		puts "Neo6502 VMEM: total story bytes #{story_bytes}, 512-byte blocks #{story_blocks}; dynmem bytes #{dynmem_bytes}, dynmem blocks #{$dynmem_blocks}."
+		puts "Neo6502 VMEM: resident blocks #{$neo_resident_vmem_blocks}, preloaded blocks #{vmem_data[3]}, map entries #{vmem_data[2]}, map bytes #{map_bytes}, paged statmem blocks #{paged_statmem_blocks}."
+		puts "Neo6502 VMEM: REU=off, OPTIMIZE_VMEM=off, C128 banks=off."
+	end
 end
 
 if !error and auto_play then 
