@@ -8,6 +8,27 @@ exception is `make_blorb.py`, which is meant to be run by hand, to build a
 Blorb of pictures and sounds for a new v6 game. make_blorb.py is documented 
 in the Ozmoo manual.
 
+## test-neo6502-smoke.sh
+
+Rebuilds Minizork for Neo6502, launches the emulator, types `open mailbox`
+and `read leaflet`, captures the console, and asserts the rendered text. In
+particular it guards against the paged-read corruption that used to turn the
+leaflet's continuation into `BH!CJ...`, and checks the status line and bottom
+prompt. It uses `decode_neo_console.py` to match screenshot pixels against the
+firmware's `font_5x7.h`, so no OCR is involved.
+
+```sh
+NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
+```
+
+The script writes its screenshot, decoded text grid, and emulator log under
+`/tmp/opencode/neo-smoke`. It needs `ruby`, `python3` with Pillow, `xdotool`,
+ImageMagick `import`, an SDL display, and a Neo firmware checkout containing
+`emulator/neo` and `firmware/common/include/interface/font_5x7.h`. Defaults can
+be overridden with `NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
+`NEO_SMOKE_STORY`, `OZMOO_HOME`, `NEO_SMOKE_SKIP_BUILD`, and the timing and
+screen-geometry variables named at the top of the script.
+
 ## pics2asm.py
 
 Converts a game's pictures - a Blorb, or a directory of numbered PNGs - into
