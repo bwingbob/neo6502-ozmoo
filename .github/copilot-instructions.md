@@ -4,9 +4,10 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 
 ## Current state and intent
 
-- Neo6502 target is **not implemented yet**. Treat this as a porting/design phase.
+- Neo6502 target now builds and runs Minizork in the emulator. Treat remaining
+  work as targeted hardening, not a greenfield port.
 - Preserve interpreter core behavior; isolate new platform logic behind existing target/version conditionals.
-- Verify Neo6502 hardware/software interfaces directly before committing to memory map, loader, I/O, or screen assumptions.
+- Verify Neo6502 hardware/software interfaces with the scripted emulator workflow below before changing memory map, loader, I/O, or screen assumptions.
 
 ## Architecture you must understand first
 
@@ -60,30 +61,161 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 - Avoid stack manipulation side effects inside Neo print routines (extra `PLA/PHA` in mid-flow caused severe output corruption during testing).
 - ACME branch distance is a recurring risk in large target-specific blocks; prefer short local conditional branches plus explicit `jmp` fallbacks when needed.
 
-### Quick runtime verification used in this repo
+### Scripted emulator verification (preferred; do not do this manually)
 
-- Build + run smoke check used repeatedly during Neo debugging:
-  - `env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5`
-- Current Neo baseline is mode `P` only; `-p` preload flags are not compatible with this path.
-- Neo sidecar output expects a writable `storage/` directory for `ozmoo.story`/`ozmoo.cfg`.
-- Emulator command path used by current build flow:
-  - `./neo6502/neo temp/ozmoo-neo.bin@801 cold`
-- Functional runtime check used as acceptance:
-  - At prompt, run `all` in Praxix and confirm it completes with "all tests passed".
+`tools/test-neo6502-smoke.sh` is the reference implementation. It rebuilds
+Minizork, strips the two-byte PRG load address, launches the emulator with both
+raw binaries, waits for the SDL window by PID, injects game commands with
+`xdotool`, captures the window, decodes pixels against the firmware font,
+asserts the rendered text, and kills the emulator in an `EXIT` trap. Prefer it
+over asking the user to click through the emulator.
 
-### Debugger notes (Neo6502 + ACME)
+```sh
+# From the repository root; uses /tmp/opencode/neo-firmware/emulator/neo.
+NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
 
-- `temp/acme_labels.txt` is build-artifact-specific. Always rebuild first, then debug with labels from that exact build output.
-- If code layout changes (especially in `asm/screenkernal.asm` Neo blocks), label addresses and branch distances change; refresh labels before stepping/inspecting symbols.
-- Prefer debugging Neo text issues from `.neo_printchar` and its helpers (`.neo_flush_word`, `.neo_emit_newline`) rather than generic buffered output paths.
-- When behavior differs between build-only and emulator runtime, validate against the same produced binaries loaded by:
-  - `./neo6502/neo temp/ozmoo-neo.bin@801 cold`
-- For runtime regressions, use Praxix prompt-driven checks (`help`, `all`) as fast end-to-end assertions after single-file assembly changes.
+# Reuse the binaries from an immediately preceding build.
+NEO_SMOKE_SKIP_BUILD=1 NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware \
+    tools/test-neo6502-smoke.sh
+```
+
+Outputs are under `/tmp/opencode/neo-smoke`: `screen.png`, `decoded.txt`, and
+`emulator.log`. The smoke test needs `ruby`, `python3` with Pillow, `xdotool`,
+ImageMagick `import`, and an SDL display.
+
+The manual equivalent of the launch step is:
+
+```sh
+cd /home/bob/Documents/Projects/neo6502-ozmoo
+NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware
+mkdir -p /tmp/opencode/neo-smoke
+env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -v examples/minizork.z3
+
+# Strip the PRG load address from the interpreter; the story image is already raw.
+tail -c +3 temp/ozmoo > temp/ozmoo-neo-main.bin
+cp temp/compmem.tmp temp/ozmoo-neo-story.bin
+
+"$NEO_FIRMWARE_ROOT/emulator/neo" cold \
+  "$PWD/temp/ozmoo-neo-main.bin@1000" \
+  "$PWD/temp/ozmoo-neo-story.bin@4600" \
+  run@1000 > /tmp/opencode/neo-smoke/emulator.log 2>&1 &
+EMU_PID=$!
+```
+
+Do not pipe game input to the emulator's stdin. The loader arguments are
+parsed from the command line; game input is SDL keyboard input and must be sent
+to the emulator window. Arguments are processed left to right:
+
+- `file@HEX` loads a raw binary at a hexadecimal address.
+- `run@HEX` sets the 6502 reset vector to `HEX`; `cold`, `warm` and `exec` set
+  it to `$0800`, `$0803` and `$0806`.
+- `path:DIR` sets the storage root. The default is `storage` relative to the
+  current directory, so run from the repository root or pass an absolute path.
+- `trace` prints each executed instruction to stdout.
+- `keys` disables the emulator's debugger keys and makes exit `Ctrl+ESC`
+  instead of `ESC`.
+- `scale=1` through `scale=4` sets the display scale (default `3`).
+- A `*.neo` argument loads a Neo container; its execute address comes from the
+  header.
+
+Drive the SDL window like this (this is what the smoke script wraps):
+
+```sh
+# Wait for the window owned by the emulator process.
+WINDOW_ID=""
+until [[ -n "$WINDOW_ID" ]]; do
+  WINDOW_ID="$(xdotool search --pid "$EMU_PID" 2>/dev/null | head -n 1 || true)"
+  sleep 0.2
+done
+sleep 4                                      # boot delay
+
+send_line() {
+  xdotool windowactivate --sync "$WINDOW_ID" # SDL needs explicit activation
+  sleep 0.2
+  xdotool type --delay 60 -- "$1"
+  xdotool key Return
+}
+send_line "open mailbox"
+sleep 5
+send_line "read leaflet"
+```
+
+The title `Neo6502 Emulator` can also be used with `xdotool search --name` if
+the PID is unavailable. Always terminate the emulator you started; the smoke
+script does this with `trap cleanup EXIT`.
+
+Capture and decode the console without OCR:
+
+```sh
+import -window "$WINDOW_ID" /tmp/opencode/neo-smoke/screen.png
+python3 tools/decode_neo_console.py \
+  /tmp/opencode/neo-smoke/screen.png \
+  "$NEO_FIRMWARE_ROOT/firmware/common/include/interface/font_5x7.h"
+```
+
+At the default `scale=3` the window is 1008x840. The decoder's defaults
+(`X0=27`, `Y0=60`, `CW=18`, `CH=24`, 53 columns x 30 rows) are derived from the
+centred 320x240 display and the 5x7 font; override them with `NEO_SMOKE_X0`,
+`NEO_SMOKE_Y0`, `NEO_SMOKE_CW`, `NEO_SMOKE_CH`, `NEO_SMOKE_COLS` or
+`NEO_SMOKE_ROWS` only if the scale or geometry changes.
+
+### Debugger and debug-output access
+
+There are four complementary mechanisms; use the least invasive one that
+answers the question.
+
+- **SDL debugger keys** (available unless the `keys` loader argument was
+  passed): `F6` breaks into the debugger, `F7` single-steps, `F8` steps over,
+  `F9` sets a breakpoint at the current code address, `F2` homes the code view
+  to PC, `F5` runs, and `TAB` shows the game display while stopped. Hex digits
+  `0-9`/`A-F` shift into the inspected address; with `Shift` or `Ctrl` they
+  shift into the data address. A `BRK` (`$03`) at PC also stops in the
+  debugger. `ESC` exits the emulator.
+- **Instruction trace**: add `trace` to the loader command line and capture
+  stdout. This is useful for narrow paging or branching bugs, but very noisy.
+- **Firmware debug port**: System group 1, function 10 writes one character to
+  the debug port. On the emulator that is `stderr`, so redirect both streams
+  as in the launch command above. The API registers are `$FF00` (group,
+  writing it triggers dispatch), `$FF01` (function), and `$FF04`..`$FF09`
+  (parameters). Example, emitting `A`:
+
+  ```asm
+      lda #$41       ; character
+      sta $ff04      ; parameter 0
+      ldx #$0a       ; function 10 = write debug char
+      lda #$01       ; group 1 = system
+      stx $ff01
+      sta $ff00      ; trigger
+  ```
+
+  Keep temporary calls like this out of committed interpreter code; they were
+  used to trace `ZTEXT`/paged reads while fixing the leaflet corruption.
+- **BASIC monitor and memory dump**: in a normal `cold`-booted BASIC session
+  (not the `run@1000` Ozmoo launch), type `mon` to enter the WozMon-style
+  monitor (`\` prompt); a hex address dumps bytes, `.` lists a range, `:`
+  stores bytes, `R` runs, and `N` returns to NeoBASIC. On clean exit the
+  emulator also writes a 64 KiB `memory.dump` in its working directory, which
+  can be inspected with `xxd`.
+
+`temp/acme_labels.txt` is build-artifact-specific. Always rebuild first, then
+debug with labels from that exact binary. If code layout changes, refresh the
+labels before stepping or inspecting symbols. For Neo text bugs, start at
+`.neo_printchar` and its `.neo_flush_word` / `.neo_emit_newline` helpers rather
+than the generic buffered path.
+
+For a fast non-graphics sanity check after an assembly-only change, the older
+Praxix check is still useful:
+
+```sh
+env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5
+# At the prompt, run `all` and expect "all tests passed".
+```
 
 ## Next session reminder
 
-- Priority next step: implement Neo6502 VM/paging support so larger stories (for example `examples/minizork.z3`) can build/run without the current mode-P in-memory size failure.
-- Current known blocker: Neo target is currently restricted to build mode `P`, which requires the whole story to fit in RAM.
+- Minizork now builds and runs on Neo6502 with the flat `storage/ozmoo.story`
+  sidecar and direct VMEM page mapping. Re-run `tools/test-neo6502-smoke.sh`
+  before changing paging, screen, or input behavior.
 
 ## External references for Neo6502 porting
 
