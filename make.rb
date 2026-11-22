@@ -1895,7 +1895,9 @@ end
 def calc_neo_vmap_max_entries()
 	nonstored_pages = $dynmem_blocks * ($VMEM_BLOCKSIZE / 256)
 	vmap_first_ram_page = (nonstored_pages + ($storystart >> 8)) & 0xff
-	neo_vmem_end_page = 0x100          # VMEM_END_PAGE = $00 means top of 64 KB
+	# Neo reserves top pages for Morpheus/firmware runtime state.
+	# Runtime uses VMEM_END_PAGE = $fe, so mirror that here.
+	neo_vmem_end_page = 0xfe
 	# vmap_max_size from constants-neo6502.asm: (vmap_buffer_end - vmap_buffer_start)/2.
 	# Fall back to the known defaults if the labels file did not expose them.
 	vmap_start = $neo_vmap_buffer_start || 0x334
@@ -4233,7 +4235,12 @@ puts "Save slots: #{save_slots}" if $verbose
 
 build_interpreter()
 
-$dynmem_and_vmem_size_bank_0 = $memory_end_address - $storystart - 
+# Neo reserves top two pages $fe00-$ffff for Morpheus/firmware runtime state.
+neo_reserved_top_bytes = ($target == 'neo6502') ? 0x200 : 0
+effective_memory_end_address = $memory_end_address - neo_reserved_top_bytes
+effective_unbanked_ram_end_address = $unbanked_ram_end_address - neo_reserved_top_bytes
+
+$dynmem_and_vmem_size_bank_0 = effective_memory_end_address - $storystart - 
 	($scrollback_ram_pages ? 256 * $scrollback_ram_pages : 0)
 
 $dynmem_and_vmem_size_bank_0_max = $dynmem_and_vmem_size_bank_0
@@ -4259,10 +4266,10 @@ if $target !~ /^(mega65|x16)$/ and
 end
 puts "Dynamic memory: #{$dynmem_blocks * $VMEM_BLOCKSIZE} bytes" if $verbose 
 
-$vmem_blocks_in_ram = ($memory_end_address - ($scrollback_ram_pages ? 256 * $scrollback_ram_pages : 0) -
+$vmem_blocks_in_ram = (effective_memory_end_address - ($scrollback_ram_pages ? 256 * $scrollback_ram_pages : 0) -
 		$storystart) / $VMEM_BLOCKSIZE - $dynmem_blocks
 
-$unbanked_vmem_blocks = ($unbanked_ram_end_address - $storystart) / $VMEM_BLOCKSIZE - $dynmem_blocks
+$unbanked_vmem_blocks = (effective_unbanked_ram_end_address - $storystart) / $VMEM_BLOCKSIZE - $dynmem_blocks
 
 if $target == 'c128' then
 	$vmem_blocks_in_ram += ($memory_end_address - 0x1200 - 256 * $stack_pages) / $VMEM_BLOCKSIZE 

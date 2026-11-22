@@ -450,7 +450,14 @@ read_track_sector
 	sty .device
 
 !ifdef TARGET_NEO6502 {
+	cmp #CONF_TRK
+	bne .neo_story_via_block
+	cpx #2
+	bcs .neo_story_via_block
 	jsr neo_read_track_sector
+	rts
+.neo_story_via_block
+	jsr neo_readblock
 	rts
 }
 

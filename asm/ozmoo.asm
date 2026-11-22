@@ -96,6 +96,9 @@
 !ifdef TARGET_NEO6502 {
 	TARGET_ASSIGNED = 1
 	SUPPORT_REU = 0
+	; Neo runtime uses top memory for Morpheus/firmware state.
+	; Keep VMEM/RAM residency below $fe00.
+	VMEM_END_PAGE = $fe
 	!ifndef SLOW {
 		SLOW = 1
 	}
