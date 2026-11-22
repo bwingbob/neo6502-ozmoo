@@ -62,5 +62,7 @@
 /x16_*.zip
 /x16_*/
 neo6502_praxix.d64
+/neo6502_minizork.d64
+/dist/
+/storage/
 memory.dump
-storage/ozmoo.story

@@ -29,6 +29,21 @@ be overridden with `NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
 `NEO_SMOKE_STORY`, `OZMOO_HOME`, `NEO_SMOKE_SKIP_BUILD`, and the timing and
 screen-geometry variables named at the top of the script.
 
+## make_neo_executable.py
+
+Wraps a Neo6502 Ozmoo build into a single `.neo` executable. It takes the
+assembled interpreter PRG (`temp/ozmoo`) and the resident story image
+(`temp/compmem.tmp`), checks the PRG load address, and writes the `.neo` header
+plus load blocks. The header execute address defaults to `$1000`, so NeoBASIC's
+`LOAD "MINIZORK.NEO"` starts the game without a separate `SYS`.
+
+```sh
+python3 tools/make_neo_executable.py temp/ozmoo temp/compmem.tmp MINIZORK.NEO
+```
+
+The executable still needs the generated `ozmoo.story` and `ozmoo.cfg` runtime
+sidecars in the Neo storage root for paged reads.
+
 ## pics2asm.py
 
 Converts a game's pictures - a Blorb, or a directory of numbered PNGs - into
