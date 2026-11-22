@@ -161,6 +161,9 @@ readblock
 	sta .blocks_to_go + 1
 
 !ifdef TARGET_NEO6502 {
+	bcc .neo_adjusted_ok
+	jmp is_error
+.neo_adjusted_ok
 	jsr neo_readblock
 	rts
 }
@@ -350,44 +353,30 @@ neo_readblock
 	jsr neo_open_story_file
 
 	lda #$02
-	sta neo_api_param0
-	lda #0
-	sta neo_api_param1
-	lda readblocks_currentblock_adjusted
-	sta neo_api_param2
-	lda readblocks_currentblock_adjusted + 1
-	sta neo_api_param3
-	lda #0
-	sta neo_api_param4
-	lda #neo_api_group_fileio
-	ldx #neo_api_fn_file_seek
-	jsr neo_kernal_api_call
+	ldx readblocks_currentblock_adjusted
+	ldy readblocks_currentblock_adjusted + 1
+	jsr neo_kernal_seek_file
 	bcc .seek_ok
 	jmp is_error
 .seek_ok
 
+	lda #$00
+	sta neo_kernal_size
+	lda #$01
+	sta neo_kernal_size + 1
+
 	lda #$02
-	sta neo_api_param0
-	lda readblocks_mempos
-	sta neo_api_param1
-	lda readblocks_mempos + 1
-	sta neo_api_param2
-	lda #0
-	sta neo_api_param3
-	lda #1
-	sta neo_api_param4
-	lda #neo_api_group_fileio
-	ldx #neo_api_fn_file_read
-	jsr neo_kernal_api_call
+	ldx readblocks_mempos
+	ldy readblocks_mempos + 1
+	jsr neo_kernal_read_file
 	bcc .read_ok
 	jmp is_error
 .read_ok
+
 	lda #$02
 	jsr kernal_close
 	bcc +
 	jmp is_error
-
-	rts
 
 +
 	rts
