@@ -4412,6 +4412,14 @@ end
 	if $target == 'neo6502'
 		neo_story_path = File.join(__dir__, 'storage', 'ozmoo.story')
 		neo_story_data = $story_file_data || ''
+		# Neo6502 uses a flat story sidecar: a byte-for-byte copy of the complete
+		# story file, including dynmem. VMEM page numbers therefore map directly
+		# to file pages; callers must not apply the disk-layout nonstored_pages
+		# offset when reading from this sidecar.
+		unless neo_story_data.bytesize == $story_size
+			puts "ERROR: Neo6502 story sidecar size #{neo_story_data.bytesize} does not match story size #{$story_size}."
+			exit 1
+		end
 		FileUtils.mkdir_p(File.dirname(neo_story_path))
 		if neo_story_data.empty?
 			puts "ERROR: Neo6502 story sidecar would be empty."

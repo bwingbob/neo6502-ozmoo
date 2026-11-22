@@ -150,6 +150,18 @@ readblock
 	jsr print_byte_as_hex
 }
 
+!ifdef TARGET_NEO6502 {
+	; The Neo story sidecar is the complete story file, including dynmem.
+	; readblocks_currentblock is already a Z-machine page number, so it is
+	; also the file page number. Do not subtract nonstored_pages here.
+	lda readblocks_currentblock
+	sta readblocks_currentblock_adjusted
+	lda readblocks_currentblock + 1
+	sta readblocks_currentblock_adjusted + 1
+	jsr neo_readblock
+	rts
+}
+
 	lda readblocks_currentblock
 	sec
 	sbc nonstored_pages
@@ -159,14 +171,6 @@ readblock
 	sbc #0
 	sta readblocks_currentblock_adjusted + 1
 	sta .blocks_to_go + 1
-
-!ifdef TARGET_NEO6502 {
-	bcs .neo_adjusted_ok
-	jmp is_error
-.neo_adjusted_ok
-	jsr neo_readblock
-	rts
-}
 
 !if SUPPORT_REU = 1 {
 	; Check if game has been cached to REU

@@ -879,11 +879,13 @@ s_printchar
 	lda s_neo_char
 	and #$7f
 	ldx s_neo_word_len
-	cpx #SCREEN_WIDTH
+	; Never fill the last column: Neo firmware auto-wraps there and scrolls
+	; row 0, which would scroll the status line away as well.
+	cpx #SCREEN_WIDTH - 1
 	bcc +
 	jsr .neo_flush_word
 	ldx #0
-+	sta print_buffer,x
++	sta s_neo_word_buffer,x
 	inx
 	stx s_neo_word_len
 	rts
@@ -928,7 +930,9 @@ s_printchar
 	beq .neo_emit_word
 	clc
 	adc s_neo_word_len
-	cmp s_screen_width_plus_one
+	; A word ending in the last column would make the firmware wrap and
+	; scroll row 0 before we handle the newline ourselves.
+	cmp s_screen_width
 	bcc .neo_emit_word
 	jsr .neo_emit_newline
 
@@ -937,7 +941,7 @@ s_printchar
 .neo_emit_word_loop
 	cpx s_neo_word_len
 	bcs .neo_flush_done_reset
-	lda print_buffer,x
+	lda s_neo_word_buffer,x
 	jsr neo_vector_writechar
 	inc zp_screencolumn
 	inx
@@ -1521,6 +1525,9 @@ s_cursorswitch !byte 0
 !ifdef TARGET_NEO6502 {
 s_neo_char !byte 0
 s_neo_word_len !byte 0
+; Neo word assembly must not share Ozmoo's generic print_buffer: generic
+; buffering keeps the current wrapped line there while s_printchar is called.
+s_neo_word_buffer !fill SCREEN_WIDTH + 1, 0
 }
 !ifdef USE_BLINKING_CURSOR {
 s_cursormode !byte 0

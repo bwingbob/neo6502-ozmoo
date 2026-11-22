@@ -1287,14 +1287,24 @@ draw_status_line
 ; .print_score_40
 	lda .statusline_temp
 	clc
+!ifdef TARGET_NEO6502 {
+	; Leave the last column unused: writing there makes Neo firmware wrap
+	; and scroll row 0, losing the status line.
+	adc #9
+} else {
 	adc #8
+}
 	tay	
 	jsr statusline_print_room
 
 	lda s_screen_width
 	sec
 	sbc .statusline_temp
+!ifdef TARGET_NEO6502 {
+	sbc #9
+} else {
 	sbc #8
+}
 	tay
 	jsr set_cursor
 	; Print " Sc:"
@@ -1426,7 +1436,11 @@ draw_status_line
 
 	lda s_screen_width
 	sec
+!ifdef TARGET_NEO6502 {
+	sbc #17
+} else {
 	sbc #16
+}
 	tay
 	jsr set_cursor
 	lda #>.time_str
