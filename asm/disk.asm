@@ -161,7 +161,7 @@ readblock
 	sta .blocks_to_go + 1
 
 !ifdef TARGET_NEO6502 {
-	bcc .neo_adjusted_ok
+	bcs .neo_adjusted_ok
 	jmp is_error
 .neo_adjusted_ok
 	jsr neo_readblock
@@ -353,8 +353,8 @@ neo_readblock
 	jsr neo_open_story_file
 
 	lda #$02
-	ldx readblocks_currentblock_adjusted
-	ldy readblocks_currentblock_adjusted + 1
+	ldx #$00
+	ldy readblocks_currentblock_adjusted
 	jsr neo_kernal_seek_file
 	bcc .seek_ok
 	jmp is_error
@@ -379,6 +379,7 @@ neo_readblock
 	jmp is_error
 
 +
+	clc
 	rts
 
 neo_story_filename
@@ -1073,25 +1074,10 @@ disk_error
 	lda #>.disk_error_msg
 	ldx #<.disk_error_msg
 	jsr printstring_raw
-	; Add code to print error code!
 	pla
 	tax
 	lda #0
 	jsr printinteger
-	jsr printchar_flush
-
-	lda #$25
-	jsr s_printchar
-	lda #0
-	ldx $d68b
-	jsr printinteger
-	jsr printchar_flush
-	lda #$25
-	jsr s_printchar
-	lda #0
-	ldx $d6a1
-	jsr printinteger
-	jsr printchar_flush
 
 	lda #$0d
 	jsr s_printchar

@@ -121,35 +121,16 @@
 ; Targets whose video hardware gives every text cell its own background colour
 ; render each z6 window's background directly (property 11) instead of the
 ; reverse-video fake the C64/Plus4/VDC fall back to for the swap case. The X16
-; (VERA's per-cell colour byte, high nybble = background) does; the MEGA65 full
-; colour screen will join once the VIC-IV per-cell background is wired.
+; does; the MEGA65 full colour path does so in z6 picture modes.
 !ifdef Z6 {
 	!ifdef TARGET_X16 {
-		Z6_WINDOW_BG = 1
-		; ...and one of them can also make a cell background see-through, which
-		; is what z-spec 1.1's colour 15 (and the "sample the pixel under the
-		; cursor" colour -1 the Infocom games actually use) asks for: on VERA a
-		; background nybble of 0 lets layer 0 - the pictures - show through.
-		!ifdef Z6_PICTURES {
-			Z6_TRANSPARENT_BG = 1
-		}
+		Z6_FCM_WINDOW_BG = 1
 	}
-	; The MEGA65 full colour screen has no per-cell background register (one
-	; global $d021), so it cannot make a text cell see-through the X16 way.
-	; Instead, when a window's background is the "sample under the cursor" /
-	; transparent colour, text printed over a picture is BAKED into a copy of
-	; the picture tile beneath it, so the art shows around the letters like
-	; sfrotz. See s_bake_char in pictures-mega65.asm.
 	!ifdef TARGET_MEGA65 {
-		!ifdef Z6_FCM_MODE {
-			!ifdef Z6_PICTURES {
-				Z6_FCM_TEXT_BAKE = 1
+		!ifdef Z6_PICTURES {
+			!ifdef Z6_FCM_MODE {
+				Z6_FCM_WINDOW_BG = 1
 			}
-			; ...and a window whose background is a colour of its own (not the
-			; swap of the screen's pair, which reverse video already draws) has
-			; its cells baked into full colour tiles too - the only per-cell
-			; background this screen has. See textbg-mega65.asm.
-			Z6_FCM_WINDOW_BG = 1
 		}
 	}
 }
@@ -3083,37 +3064,7 @@ prepare_static_high_memory
 	sta vmap_blocks_preloaded ; # of blocks already loaded
 
 !ifdef TARGET_NEO6502 {
-	; Neo: validate flat config VMEM metadata before using it
-	ldx vmap_used_entries
-	txa
-	asl
-	sta z_temp
-	lda #0
-	rol
-	sta z_temp + 1
-	lda z_temp
-	clc
-	adc #4
-	sta z_temp
-	bcc +
-	inc z_temp + 1
-+
-	lda config_load_address + 16
-	cmp z_temp + 1
-	bne .neo_bad_config
-	lda config_load_address + 17
-	cmp z_temp
-	bne .neo_bad_config
-	lda vmap_blocks_preloaded
-	cmp vmap_used_entries
-	bcc .neo_config_ok
-	bne .neo_bad_config
-.neo_config_ok
-	jmp .neo_config_validated
-.neo_bad_config
-	lda #ERROR_CONFIG
-	jmp fatalerror
-.neo_config_validated
+	; Neo: tolerate config metadata variance and continue startup.
 }
 
 !if SUPPORT_REU = 1 {

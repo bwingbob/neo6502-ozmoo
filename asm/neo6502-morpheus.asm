@@ -346,6 +346,7 @@ neo_kernal_close_check_output
 	lda #0
 	sta neo_kernal_output_lfn
 neo_kernal_close_done
+	clc
 	rts
 
 neo_kernal_chkin
@@ -552,12 +553,13 @@ neo_kernal_reset
 neo_kernal_seek_file
 	; Seek to 16-bit offset. Inputs: A=LFN, X=seek-low, Y=seek-high.
 	; Parameter placement per neo_readblock convention:
-	; param0=A (LFN), param1=0, param2=X (offset low), param3=Y (offset high), param4=0, param5=0.
+	; param0=A (LFN), param1=X (offset low), param2=Y (offset high), param3=0, param4=0, param5=0.
+	; Morpheus interprets seek offset as little-endian across param1..param4.
 	sta neo_api_param0
-	stx neo_api_param2
-	sty neo_api_param3
+	stx neo_api_param1
+	sty neo_api_param2
 	lda #0
-	sta neo_api_param1
+	sta neo_api_param3
 	sta neo_api_param4
 	sta neo_api_param5
 	lda #neo_api_group_fileio
