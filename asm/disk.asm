@@ -386,10 +386,6 @@ neo_readblock
 	clc
 	rts
 
-neo_story_filename
-	!text "ozmoo.story"
-neo_story_filename_len = * - neo_story_filename
-
 neo_open_config_file
 	lda #neo_config_filename_len
 	ldx #<neo_config_filename
@@ -441,9 +437,6 @@ neo_read_track_sector
 	clc
 	rts
 
-neo_config_filename
-	!text "ozmoo.cfg"
-neo_config_filename_len = * - neo_config_filename
 }
 
 	; convert track/sector to ascii and update drive command

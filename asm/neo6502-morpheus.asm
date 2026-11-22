@@ -326,6 +326,8 @@ neo_kernal_setlfs
 	sty neo_kernal_sa
 	jmp neo_kernal_set_status_ok
 
+!source "../temp/neo-file-names.asm"
+
 neo_kernal_open
 	lda neo_kernal_sa
 	cmp #15
@@ -342,12 +344,12 @@ neo_kernal_open_file_open
 	bne neo_kernal_open_have_name
 	ldx #0
 neo_kernal_open_map_hash_to_story
-	lda neo_kernal_story_filename,x
+	lda neo_story_filename,x
 	sta neo_kernal_lpref_name + 1,x
 	inX
-	cpx #neo_kernal_story_filename_len
+	cpx #neo_story_filename_len
 	bne neo_kernal_open_map_hash_to_story
-	lda #neo_kernal_story_filename_len
+	lda #neo_story_filename_len
 	sta neo_kernal_lpref_name
 neo_kernal_open_have_name
 	lda neo_kernal_lfn
@@ -371,10 +373,6 @@ neo_kernal_open_have_mode
 	lda #neo_api_group_fileio
 	ldx #neo_api_fn_file_open
 	jmp neo_kernal_api_call
-
-neo_kernal_story_filename
-	!text "ozmoo.story"
-neo_kernal_story_filename_len = * - neo_kernal_story_filename
 
 neo_kernal_close
 	sta neo_kernal_temp_lfn

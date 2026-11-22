@@ -41,8 +41,10 @@ plus load blocks. The header execute address defaults to `$1000`, so NeoBASIC's
 python3 tools/make_neo_executable.py temp/ozmoo temp/compmem.tmp MINIZORK.NEO
 ```
 
-The executable still needs the generated `ozmoo.story` and `ozmoo.cfg` runtime
-sidecars in the Neo storage root for paged reads.
+The executable still needs the generated `<GAME>.STORY` and `<GAME>.CFG`
+runtime sidecars in the Neo storage root for paged reads. `make.rb` names them
+after the story file's 8.3 basename, so different games do not overwrite each
+other's sidecars.
 
 ## pics2asm.py
 

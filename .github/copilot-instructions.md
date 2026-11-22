@@ -213,9 +213,10 @@ env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5
 
 ## Next session reminder
 
-- Minizork now builds and runs on Neo6502 with the flat `storage/ozmoo.story`
-  sidecar and direct VMEM page mapping. Re-run `tools/test-neo6502-smoke.sh`
-  before changing paging, screen, or input behavior.
+- Minizork now builds and runs on Neo6502 with game-named flat sidecars
+  (`storage/MINIZORK.STORY` and `storage/MINIZORK.CFG`) and direct VMEM page
+  mapping. Re-run `tools/test-neo6502-smoke.sh` before changing paging, screen,
+  or input behavior.
 
 ## External references for Neo6502 porting
 

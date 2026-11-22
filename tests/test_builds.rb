@@ -154,10 +154,19 @@ def expect_failure(storyfile, target, params, message, allow_successful_build, o
 	finalize_test(build_result, problem, outfiles)
 end
 
-# Neo sidecars are written to ../storage by make.rb. Clear them before every
-# Neo build so a stale file can never be mistaken for a fresh sidecar.
-def clear_neo_sidecars
-	['../storage/ozmoo.story', '../storage/ozmoo.cfg'].each do |path|
+# Neo sidecars are written to ../storage by make.rb, named after the game.
+# Keep this in step with neo_8_3_basename in make.rb.
+def neo_sidecar_names(storyfile)
+	base = File.basename(storyfile, File.extname(storyfile)).upcase.gsub(/[^A-Z0-9]/, '')[0, 8]
+	base = 'STORY' if base.nil? or base.empty?
+	[base + '.STORY', base + '.CFG']
+end
+
+# Clear them before every Neo build so a stale file can never be mistaken for
+# a fresh sidecar.
+def clear_neo_sidecars(storyfile)
+	neo_sidecar_names(storyfile).each do |name|
+		path = File.join('..', 'storage', name)
 		File.delete(path) if File.exist?(path)
 	end
 end
@@ -185,9 +194,10 @@ def neo_vmem_config_ok?(path)
 	return true, nil
 end
 
-def validate_neo_sidecars(original_story_size)
-	story_path = '../storage/ozmoo.story'
-	cfg_path = '../storage/ozmoo.cfg'
+def validate_neo_sidecars(original_story_size, storyfile)
+	story_name, cfg_name = neo_sidecar_names(storyfile)
+	story_path = File.join('..', 'storage', story_name)
+	cfg_path = File.join('..', 'storage', cfg_name)
 
 	unless File.exist?(story_path)
 		puts "EXPECTED FILE MISSING: #{story_path}"
@@ -211,7 +221,7 @@ rescue => e
 end
 
 def expect_neo_vmem_success(storyfile, params, diskimage)
-	clear_neo_sidecars
+	clear_neo_sidecars(storyfile)
 
 	build_result = run_command("\n(EXPECT NEO VMEM SUCCESS) ", storyfile, 'neo6502', "-v #{params}".strip)
 	problem = false
@@ -229,8 +239,8 @@ def expect_neo_vmem_success(storyfile, params, diskimage)
 		problem = true
 	end
 
-	problem = true unless validate_neo_sidecars(File.size(storyfile))
-	clear_neo_sidecars
+	problem = true unless validate_neo_sidecars(File.size(storyfile), storyfile)
+	clear_neo_sidecars(storyfile)
 
 	finalize_test(build_result, problem, {"#{diskimage}.d64" => 1})
 end

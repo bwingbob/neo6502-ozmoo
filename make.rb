@@ -1391,6 +1391,14 @@ def name_to_c64(name)
 	c64_name
 end
 
+def neo_8_3_basename(name)
+	# Neo storage uses FAT-style 8.3 names. Keep the game name recognisable,
+	# but strip anything DOS 8.3 cannot represent and truncate to eight chars.
+	base = name.upcase.gsub(/[^A-Z0-9]/, '')[0, 8]
+	base = 'STORY' if base.nil? or base.empty?
+	base
+end
+
 def build_interpreter()
 	necessarysettings =  " --setpc #{$start_address} -DCACHE_PAGES=#{$CACHE_PAGES} -DSTACK_PAGES=#{$stack_pages} -D#{$ztype}=1"
 	necessarysettings +=  " -DCONF_TRK=#{$CONFIG_TRACK}" if $CONFIG_TRACK
@@ -4207,6 +4215,22 @@ file_name = File.read(File.join($SRCDIR, 'file-name.tpl'))
 file_name.sub!("@fn@", $file_name)
 File.write(File.join($TEMPDIR, 'file-name.asm'), file_name)
 
+if $target == 'neo6502'
+	neo_base = neo_8_3_basename(storyname)
+	$neo_story_filename = "#{neo_base}.STORY"
+	$neo_config_filename = "#{neo_base}.CFG"
+	neo_file_names = <<~ASM
+		neo_story_filename
+		\t!text "#{$neo_story_filename}"
+		neo_story_filename_len = * - neo_story_filename
+		neo_config_filename
+		\t!text "#{$neo_config_filename}"
+		neo_config_filename_len = * - neo_config_filename
+	ASM
+	File.write(File.join($TEMPDIR, 'neo-file-names.asm'), neo_file_names)
+	puts "Neo6502 runtime files: #{$neo_story_filename}, #{$neo_config_filename}." if $verbose
+end
+
 # Set $no_sector_preload if we can be almost certain it won't be needed anyway
 if $target != 'c128' and limit_preload_vmem_blocks == false
 	loader_kb = $loader_pic_file ? 5 : 0
@@ -4410,7 +4434,7 @@ else
 end
 
 	if $target == 'neo6502'
-		neo_story_path = File.join(__dir__, 'storage', 'ozmoo.story')
+		neo_story_path = File.join(__dir__, 'storage', $neo_story_filename)
 		neo_story_data = $story_file_data || ''
 		# Neo6502 uses a flat story sidecar: a byte-for-byte copy of the complete
 		# story file, including dynmem. VMEM page numbers therefore map directly
@@ -4499,7 +4523,7 @@ if $target == 'neo6502' && $VMEM && !error
 	end
 	storage_dir = File.join(__dir__, 'storage')
 	FileUtils.mkdir_p(storage_dir)
-	neo_config_path = File.join(storage_dir, 'ozmoo.cfg')
+	neo_config_path = File.join(storage_dir, $neo_config_filename)
 	neo_cfg_data = config_data.dup
 	neo_cfg_vmem = vmem_data.dup
 	if neo_cfg_vmem.length > 0
