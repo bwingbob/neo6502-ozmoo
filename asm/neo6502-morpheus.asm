@@ -567,6 +567,24 @@ neo_kernal_seek_file
 	jsr neo_kernal_api_call
 	rts
 
+neo_kernal_seek_file_page
+	; Seek to page*256 byte offset. Inputs: A=LFN, X=page-low, Y=page-high.
+	; param0=A, param1=0, param2=page-low, param3=page-high, param4=0, param5=0.
+	sta neo_api_param0
+	lda #0
+	sta neo_api_param1
+	txa
+	sta neo_api_param2
+	tya
+	sta neo_api_param3
+	lda #0
+	sta neo_api_param4
+	sta neo_api_param5
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_seek
+	jsr neo_kernal_api_call
+	rts
+
 neo_kernal_read_file
 	; Read from file. Inputs: A=LFN, X=dest low, Y=dest high, neo_kernal_size=requested count (low/high).
 	; Parameter placement per neo_readblock convention:

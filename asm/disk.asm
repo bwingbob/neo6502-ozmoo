@@ -353,9 +353,9 @@ neo_readblock
 	jsr neo_open_story_file
 
 	lda #$02
-	ldx #$00
-	ldy readblocks_currentblock_adjusted
-	jsr neo_kernal_seek_file
+	ldx readblocks_currentblock_adjusted
+	ldy readblocks_currentblock_adjusted + 1
+	jsr neo_kernal_seek_file_page
 	bcc .seek_ok
 	jmp is_error
 .seek_ok
@@ -408,9 +408,9 @@ neo_read_track_sector
 	jsr neo_open_config_file
 
 	lda #$03
-	ldx #$00
-	ldy .sector
-	jsr neo_kernal_seek_file
+	ldx .sector
+	ldy #$00
+	jsr neo_kernal_seek_file_page
 	bcc .cfg_seek_ok
 	jmp is_error
 .cfg_seek_ok
