@@ -186,7 +186,7 @@ capture_console "$WORKDIR/save-screen.png" "$SAVE_DECODED"
 reject_text "Device#" "$SAVE_DECODED"
 # The save path intentionally clears the window on completion, so the typed
 # comment is verified in the on-disk header below rather than in this frame.
-expect_text "OK." "$SAVE_DECODED"
+expect_text "Ok." "$SAVE_DECODED"
 
 if [[ ! -f "$SAVE_FILE" ]]; then
     echo "FAIL: save file not found: $SAVE_FILE" >&2
@@ -229,8 +229,8 @@ RESTORE_DECODED="$WORKDIR/restore-decoded.txt"
 capture_console "$WORKDIR/restore-screen.png" "$RESTORE_DECODED"
 reject_text "Disk error" "$RESTORE_DECODED"
 reject_text "Device#" "$RESTORE_DECODED"
-expect_text "WEST OF HOUSE" "$RESTORE_DECODED"
-reject_text "OPENING THE SMALL MAILBOX REVEALS A LEAFLET." "$RESTORE_DECODED"
+expect_text "West of House" "$RESTORE_DECODED"
+reject_text "Opening the small mailbox reveals a leaflet." "$RESTORE_DECODED"
 
 echo "Restarting emulator and restoring from the same storage..."
 stop_emulator
@@ -244,7 +244,7 @@ RESTART_DECODED="$WORKDIR/restart-decoded.txt"
 capture_console "$WORKDIR/restart-screen.png" "$RESTART_DECODED"
 reject_text "Disk error" "$RESTART_DECODED"
 reject_text "Device#" "$RESTART_DECODED"
-expect_text "WEST OF HOUSE" "$RESTART_DECODED"
+expect_text "West of House" "$RESTART_DECODED"
 
 if ((failures > 0)); then
     echo "--- decoded console captures ---" >&2

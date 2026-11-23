@@ -135,10 +135,11 @@ expect_regex() {
     fi
 }
 
-expect_text "OPENING THE SMALL MAILBOX REVEALS A LEAFLET."
-expect_text "THE LARGER, DISK-BASED VERSION OF ZORK I."
+expect_text "Opening the small mailbox reveals a leaflet."
+expect_text "the larger, disk-based version of Zork I."
+expect_text '"WELCOME TO ZORK, a game of adventure'
 expect_text ">read leaflet"
-expect_regex '^00: WEST OF HOUSE'
+expect_regex '^00: West of House'
 expect_regex '^29: >'
 
 if grep -Fq "BH!CJ" "$DECODED"; then
