@@ -221,7 +221,15 @@ echo "Changing location, then restoring in-session..."
 send_line "open mailbox"
 sleep "$COMMAND_DELAY"
 send_line "restore"
-sleep "$INPUT_DELAY"
+sleep "$COMMAND_DELAY"
+
+# The restore prompt must first list the occupied slots and their comments.
+LIST_DECODED="$WORKDIR/list-decoded.txt"
+capture_console "$WORKDIR/list-screen.png" "$LIST_DECODED"
+expect_text "0: TEST SAVE" "$LIST_DECODED"
+expect_text "1: (EMPTY)" "$LIST_DECODED"
+expect_text "RESTORE FROM SLOT" "$LIST_DECODED"
+
 send_line "0"
 sleep "$FINAL_DELAY"
 

@@ -256,6 +256,12 @@ neo_save_game
 	rts
 
 neo_restore_game
+	; Show which slots hold saves, with their comments, before asking which
+	; slot to restore. This mirrors the non-Neo restore path in disk.asm.
+	; Empty and invalid slots are labelled too, so only occupied digits need
+	; to be considered at the prompt.
+	jsr neo_list_save_files
+
 	lda #>.saveslot_msg_restore
 	ldx #<.saveslot_msg_restore
 	jsr printstring_raw

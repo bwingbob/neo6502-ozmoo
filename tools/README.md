@@ -45,7 +45,9 @@ Neo firmware checkout and X11 tools. The save/restore test uses an isolated
 storage directory under `/tmp/opencode/neo-save-restore`; it copies the
 generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars out of the flat release
 package there and verifies the native `MINIZORK.S00` save file, including an
-emulator restart.
+emulator restart. On `RESTORE`, the Neo path lists every slot and its saved
+comment before asking which slot to restore, so occupied slots are visible at
+the prompt.
 
 ## decode_neo_console.py
 
