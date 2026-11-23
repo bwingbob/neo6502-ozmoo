@@ -178,7 +178,7 @@ send_line "save"
 sleep "$INPUT_DELAY"
 send_line "0"
 sleep "$INPUT_DELAY"
-send_line "TEST SAVE"
+send_line "test save"
 sleep "$FINAL_DELAY"
 
 SAVE_DECODED="$WORKDIR/save-decoded.txt"
@@ -206,6 +206,8 @@ if len(data) < 8 or data[6] != 1:
     errors.append(f"version byte is {data[6:7]!r}, expected 1")
 if len(data) < 8 or data[7] != ord("0"):
     errors.append(f"slot byte is {data[7:8]!r}, expected b'0'")
+# Neo returns lowercase ASCII, but the C64-style save-comment prompt stores
+# uppercase letters. Typing "test save" therefore has to produce "TEST SAVE".
 if len(data) < 22 or not data[8:22].startswith(b"TEST SAVE"):
     errors.append(f"comment bytes are {data[8:22]!r}, expected to start with b'TEST SAVE'")
 

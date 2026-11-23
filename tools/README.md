@@ -49,7 +49,8 @@ generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars out of the flat release
 package there and verifies the native `MINIZORK.S00` save file, including an
 emulator restart. On `RESTORE`, the Neo path lists every slot and its saved
 comment before asking which slot to restore, so occupied slots are visible at
-the prompt.
+the prompt. The screenshot script types the save comment in lowercase; the
+assertion checks that the Neo prompt folds it to uppercase in the save header.
 
 ## decode_neo_console.py
 

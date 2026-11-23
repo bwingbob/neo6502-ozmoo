@@ -1026,6 +1026,17 @@ z_ins_save
 	jsr kernal_clrchn
 -	jsr kernal_getchar
 	beq -
+!ifdef TARGET_NEO6502 {
+	; The Neo keyboard returns plain ASCII, so fold a..z to A..Z before the
+	; C64-style alphanumeric filter below. Without this, a lowercase save
+	; comment is silently discarded and the save fails on the empty comment.
+	cmp #$61
+	bcc .not_lowercase
+	cmp #$7b
+	bcs .not_lowercase
+	and #$5f
+.not_lowercase
+}
 	cmp #$14 ; delete
 	bne +
 	ldx .inputlen

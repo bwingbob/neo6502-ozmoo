@@ -109,7 +109,13 @@ neo_api_fn_clear_screen = $0c
 neo_api_fn_cursor_pos = $0d
 neo_api_fn_clear_region = $0e
 neo_api_fn_set_text_color = $0f
-neo_api_fn_read_text_color = $12 ; Console 18: ink/paper into param0/param1
+
+; Neo console palette indices and the control codes that select them. CONWrite
+; treats $80+n as foreground and $90+n as background, without moving the cursor.
+neo_console_fg       = 2
+neo_console_bg       = 0
+neo_console_fg_code  = $80
+neo_console_bg_code  = $90
 
 neo_api_fn_load_file  = $02
 neo_api_fn_store_file = $03
