@@ -15,7 +15,10 @@ with the emulator's `path:` pointing at that same flat release directory, types
 `open mailbox` and `read leaflet`, captures the console, and asserts the
 rendered text. In particular it guards against the paged-read corruption that
 used to turn the leaflet's continuation into `BH!CJ...`, and checks the status
-line and bottom prompt. It uses `decode_neo_console.py` to match screenshot
+line and bottom prompt. The `puzzles, and descriptions` assertion also catches
+resident VMEM reaching the C64-compatible I/O window: a story block mapped over
+`$d020`/`$d021` was silently rewritten by `init_screen_colours` and rendered as
+`puzzlesthe cof escriptions`. It uses `decode_neo_console.py` to match screenshot
 pixels against the firmware's `font_5x7.h`, so no OCR is involved.
 
 ```sh
@@ -43,6 +46,19 @@ storage directory under `/tmp/opencode/neo-save-restore`; it copies the
 generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars out of the flat release
 package there and verifies the native `MINIZORK.S00` save file, including an
 emulator restart.
+
+## decode_neo_console.py
+
+Matches screenshot pixels against the firmware's `font_5x7.h` to recover the
+console text used by the Neo smoke and save/restore assertions. It is a test
+helper, not part of the interpreter or the game.
+
+One known artefact: Praxix's banner is decoded as `Type "help" ... "guit" to
+exit`, although the interpreter prints `quit`. The decoder compares the first
+seven rows of each glyph (the first seven bytes of each eight-byte font entry);
+`g` and `q` differ only in the eighth row, so they are indistinguishable to it.
+Treat decoded `guit` in Praxix captures as `quit` — it is a decoder limitation,
+not a story-text or rendering bug.
 
 ## make_neo_executable.py
 

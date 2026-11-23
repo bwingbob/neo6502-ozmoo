@@ -136,6 +136,10 @@ expect_regex() {
 }
 
 expect_text "Opening the small mailbox reveals a leaflet."
+# If resident VMEM reaches the C64-compatible I/O window, init_screen_colours
+# rewrites the story bytes at $d020/$d021 and this phrase decodes as
+# "puzzlesthe cof escriptions".
+expect_text "puzzles, and descriptions"
 expect_text "the larger, disk-based version of Zork I."
 expect_text '"WELCOME TO ZORK, a game of adventure'
 expect_text ">read leaflet"

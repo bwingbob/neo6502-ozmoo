@@ -96,9 +96,10 @@
 !ifdef TARGET_NEO6502 {
 	TARGET_ASSIGNED = 1
 	SUPPORT_REU = 0
-	; Neo runtime uses top memory for Morpheus/firmware state.
-	; Keep VMEM/RAM residency below $fc00; $fc00-$fdff is the kernel ROM window.
-	VMEM_END_PAGE = $fc
+	; Neo keeps the C64-compatible I/O window ($d000-$dfff) for screen and
+	; colour registers. Resident VMEM must stop before it, otherwise loading a
+	; story block over $d020/$d021 is silently clobbered by init_screen_colours.
+	VMEM_END_PAGE = $d0
 	!ifndef SLOW {
 		SLOW = 1
 	}
