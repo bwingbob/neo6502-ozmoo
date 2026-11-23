@@ -154,21 +154,28 @@ def expect_failure(storyfile, target, params, message, allow_successful_build, o
 	finalize_test(build_result, problem, outfiles)
 end
 
-# Neo sidecars are written to ../storage by make.rb, named after the game.
-# Keep this in step with neo_8_3_basename in make.rb.
-def neo_sidecar_names(storyfile)
-	base = File.basename(storyfile, File.extname(storyfile)).upcase.gsub(/[^A-Z0-9]/, '')[0, 8]
-	base = 'STORY' if base.nil? or base.empty?
-	[base + '.STORY', base + '.CFG']
+# Neo release packages live in ../dist/<game>, with the zip beside the folder.
+# Keep the 8.3 file naming in step with neo_8_3_basename in make.rb.
+def neo_release_paths(storyfile)
+	storyname = File.basename(storyfile, File.extname(storyfile))
+	game = storyname.upcase.gsub(/[^A-Z0-9]/, '')[0, 8]
+	game = 'STORY' if game.nil? or game.empty?
+	dir = File.join('..', 'dist', storyname)
+	{
+		dir: dir,
+		zip: File.join('..', 'dist', storyname + '.zip'),
+		neo: File.join(dir, game + '.NEO'),
+		story: File.join(dir, game + '.STORY'),
+		cfg: File.join(dir, game + '.CFG')
+	}
 end
 
-# Clear them before every Neo build so a stale file can never be mistaken for
-# a fresh sidecar.
-def clear_neo_sidecars(storyfile)
-	neo_sidecar_names(storyfile).each do |name|
-		path = File.join('..', 'storage', name)
-		File.delete(path) if File.exist?(path)
-	end
+# Clear the release package before every Neo build so stale files can never be
+# mistaken for fresh ones.
+def clear_neo_release(storyfile)
+	paths = neo_release_paths(storyfile)
+	FileUtils.rm_rf(paths[:dir])
+	FileUtils.rm_f(paths[:zip])
 end
 
 def neo_vmem_config_ok?(path)
@@ -194,34 +201,80 @@ def neo_vmem_config_ok?(path)
 	return true, nil
 end
 
-def validate_neo_sidecars(original_story_size, storyfile)
-	story_name, cfg_name = neo_sidecar_names(storyfile)
-	story_path = File.join('..', 'storage', story_name)
-	cfg_path = File.join('..', 'storage', cfg_name)
+def neo_story_load_address
+	File.foreach('../temp/acme_labels.txt') do |line|
+		match = line.match(/^\s*story_start\s*=\s*\$([0-9A-Fa-f]+)/)
+		return match[1].to_i(16) if match
+	end
+	nil
+end
 
-	unless File.exist?(story_path)
-		puts "EXPECTED FILE MISSING: #{story_path}"
-		return false
+def neo_executable_ok?(path, expected_story_load)
+	data = File.binread(path)
+	return false, "#{path} has a bad header" unless data.bytesize >= 8 and data.byteslice(0, 4) == "\x03NEO"
+
+	blocks = []
+	position = 8
+	loop do
+		return false, "#{path} has a truncated block" if position + 5 > data.bytesize
+		control = data.getbyte(position)
+		load = data.getbyte(position + 1) | (data.getbyte(position + 2) << 8)
+		size = data.getbyte(position + 3) | (data.getbyte(position + 4) << 8)
+		nul = data.index("\x00", position + 5)
+		return false, "#{path} has a block without a comment" unless nul
+		comment = data.byteslice(position + 5, nul - (position + 5))
+		data_start = nul + 1
+		return false, "#{path} has a truncated payload" if data_start + size > data.bytesize
+		blocks << {load: load, size: size, comment: comment}
+		position = data_start + size
+		break if (control & 0x80) == 0
+	end
+	return false, "#{path} has trailing bytes" unless position == data.bytesize
+	return false, "#{path} does not have two load blocks" unless blocks.length == 2
+	return false, "#{path} is missing the interpreter block" unless blocks[0][:size] > 0 and blocks[0][:comment] =~ /interpreter/
+	return false, "#{path} is missing the story block" unless blocks[1][:size] > 0 and blocks[1][:comment] =~ /story/
+	return false, "#{path} loads story data at #{blocks[1][:load]}, expected #{expected_story_load}" unless blocks[1][:load] == expected_story_load
+
+	return true, nil
+rescue => e
+	return false, e.message
+end
+
+def validate_neo_release(original_story_size, storyfile)
+	paths = neo_release_paths(storyfile)
+	[paths[:zip], paths[:dir], paths[:neo], paths[:story], paths[:cfg]].each do |path|
+		unless File.exist?(path)
+			puts "EXPECTED FILE MISSING: #{path}"
+			return false
+		end
 	end
 
-	story_size = File.size(story_path)
+	story_size = File.size(paths[:story])
 	story_ok = story_size >= original_story_size
 	puts "Neo story sidecar is #{story_size} bytes, smaller than source #{original_story_size}." unless story_ok
 
 	block_ok = (story_size % 512) == 0
 	puts "Neo story sidecar size #{story_size} is not a multiple of 512." unless block_ok
 
-	cfg_ok, cfg_problem = neo_vmem_config_ok?(cfg_path)
+	cfg_ok, cfg_problem = neo_vmem_config_ok?(paths[:cfg])
 	puts "SIDECAR CHECK FAILED: #{cfg_problem}" unless cfg_ok
 
-	story_ok && block_ok && cfg_ok
+	story_load = neo_story_load_address
+	unless story_load
+		puts "EXECUTABLE CHECK FAILED: story_start was not found in temp/acme_labels.txt"
+		return false
+	end
+	neo_ok, neo_problem = neo_executable_ok?(paths[:neo], story_load)
+	puts "EXECUTABLE CHECK FAILED: #{neo_problem}" unless neo_ok
+
+	story_ok && block_ok && cfg_ok && neo_ok
 rescue => e
-	puts "SIDECAR CHECK FAILED: #{e.message}"
+	puts "RELEASE CHECK FAILED: #{e.message}"
 	false
 end
 
-def expect_neo_vmem_success(storyfile, params, diskimage)
-	clear_neo_sidecars(storyfile)
+def expect_neo_vmem_success(storyfile, params)
+	clear_neo_release(storyfile)
 
 	build_result = run_command("\n(EXPECT NEO VMEM SUCCESS) ", storyfile, 'neo6502', "-v #{params}".strip)
 	problem = false
@@ -239,10 +292,10 @@ def expect_neo_vmem_success(storyfile, params, diskimage)
 		problem = true
 	end
 
-	problem = true unless validate_neo_sidecars(File.size(storyfile), storyfile)
-	clear_neo_sidecars(storyfile)
+	problem = true unless validate_neo_release(File.size(storyfile), storyfile)
+	clear_neo_release(storyfile)
 
-	finalize_test(build_result, problem, {"#{diskimage}.d64" => 1})
+	finalize_test(build_result, problem, nil)
 end
 
 # Neo emulator runtime checks are intentionally kept out of this build-only
@@ -297,8 +350,8 @@ expect_success(minizork, 'c128', '-sb:12 -rb:0', {
 expect_success(minizork, 'mega65', '-u:0', {
 	'mega65_minizork.d81' => {'autoboot.c65' => [35, 43], 'zcode' => 206, '*FREE' => [2911, 2919]}})
 
-expect_neo_vmem_success('../test/praxix.z5', '-P', 'neo6502_praxix')
-expect_neo_vmem_success(minizork, '-P', 'neo6502_minizork')
+expect_neo_vmem_success('../test/praxix.z5', '-P')
+expect_neo_vmem_success(minizork, '-P')
 
 puts "\nTests passed: #{$passed}"
 puts "\nTests not passed: #{$not_passed}"

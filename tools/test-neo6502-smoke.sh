@@ -69,24 +69,22 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
     env OZMOO_HOME="$OZMOO_HOME" ruby make.rb -t:neo6502 -v "$STORY"
 fi
 
-STORY_LOAD="$(sed -n 's/^[[:space:]]*story_start[[:space:]]*=[[:space:]]*$\([0-9A-Fa-f][0-9A-Fa-f]*\).*/\1/p' temp/acme_labels.txt | head -n 1)"
-[[ -n "$STORY_LOAD" ]] || {
-    echo "ERROR: could not find story_start in temp/acme_labels.txt" >&2
-    exit 1
-}
-
-echo "Preparing raw emulator load files..."
-tail -c +3 temp/ozmoo > temp/ozmoo-neo-main.bin
-cp temp/compmem.tmp temp/ozmoo-neo-story.bin
+GAME_BASE="$(basename "${STORY%.*}")"
+GAME_8_3="$(printf '%s' "$GAME_BASE" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9' | cut -c1-8)"
+[[ -n "$GAME_8_3" ]] || GAME_8_3="STORY"
+RELEASE_DIR="$ROOT_DIR/dist/$GAME_BASE"
+require_file "$RELEASE_DIR/$GAME_8_3.NEO"
+require_file "$RELEASE_DIR/$GAME_8_3.STORY"
+require_file "$RELEASE_DIR/$GAME_8_3.CFG"
 
 rm -f "$LOG" "$SCREENSHOT" "$DECODED"
 
-echo "Starting emulator..."
+echo "Starting emulator with the packaged .NEO..."
 "$EMULATOR" \
     cold \
-    "$ROOT_DIR/temp/ozmoo-neo-main.bin@1000" \
-    "$ROOT_DIR/temp/ozmoo-neo-story.bin@$STORY_LOAD" \
-    run@1000 > "$LOG" 2>&1 &
+    "$RELEASE_DIR/$GAME_8_3.NEO" \
+    "path:$RELEASE_DIR" \
+    > "$LOG" 2>&1 &
 EMU_PID=$!
 
 deadline=$((SECONDS + WINDOW_TIMEOUT))

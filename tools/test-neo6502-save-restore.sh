@@ -83,11 +83,18 @@ tail -c +3 temp/ozmoo > temp/ozmoo-neo-main.bin
 cp temp/compmem.tmp temp/ozmoo-neo-story.bin
 
 echo "Preparing isolated Neo storage..."
+GAME_BASE="$(basename "${STORY%.*}")"
+GAME_8_3="$(printf '%s' "$GAME_BASE" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9' | cut -c1-8)"
+[[ -n "$GAME_8_3" ]] || GAME_8_3="STORY"
+RELEASE_DIR="$ROOT_DIR/dist/$GAME_BASE"
+require_file "$RELEASE_DIR/$GAME_8_3.STORY"
+require_file "$RELEASE_DIR/$GAME_8_3.CFG"
+
 rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR/storage"
-cp storage/MINIZORK.STORY "$WORKDIR/storage/"
-cp storage/MINIZORK.CFG "$WORKDIR/storage/"
-SAVE_FILE="$WORKDIR/storage/MINIZORK.S00"
+cp "$RELEASE_DIR/$GAME_8_3.STORY" "$WORKDIR/storage/"
+cp "$RELEASE_DIR/$GAME_8_3.CFG" "$WORKDIR/storage/"
+SAVE_FILE="$WORKDIR/storage/$GAME_8_3.S00"
 
 wait_for_window() {
     local deadline=$((SECONDS + WINDOW_TIMEOUT))

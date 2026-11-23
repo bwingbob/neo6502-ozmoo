@@ -10,12 +10,13 @@ in the Ozmoo manual.
 
 ## test-neo6502-smoke.sh
 
-Rebuilds Minizork for Neo6502, launches the emulator, types `open mailbox`
-and `read leaflet`, captures the console, and asserts the rendered text. In
-particular it guards against the paged-read corruption that used to turn the
-leaflet's continuation into `BH!CJ...`, and checks the status line and bottom
-prompt. It uses `decode_neo_console.py` to match screenshot pixels against the
-firmware's `font_5x7.h`, so no OCR is involved.
+Rebuilds Minizork for Neo6502, boots the packaged `dist/minizork/MINIZORK.NEO`
+with the emulator's `path:` pointing at that same flat release directory, types
+`open mailbox` and `read leaflet`, captures the console, and asserts the
+rendered text. In particular it guards against the paged-read corruption that
+used to turn the leaflet's continuation into `BH!CJ...`, and checks the status
+line and bottom prompt. It uses `decode_neo_console.py` to match screenshot
+pixels against the firmware's `font_5x7.h`, so no OCR is involved.
 
 ```sh
 NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
@@ -39,8 +40,9 @@ make -C tests neo-save-restore
 They are deliberately not part of `make -C tests all`, because they need a
 Neo firmware checkout and X11 tools. The save/restore test uses an isolated
 storage directory under `/tmp/opencode/neo-save-restore`; it copies the
-generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars there and verifies the
-native `MINIZORK.S00` save file, including an emulator restart.
+generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars out of the flat release
+package there and verifies the native `MINIZORK.S00` save file, including an
+emulator restart.
 
 ## make_neo_executable.py
 
@@ -48,16 +50,38 @@ Wraps a Neo6502 Ozmoo build into a single `.neo` executable. It takes the
 assembled interpreter PRG (`temp/ozmoo`) and the resident story image
 (`temp/compmem.tmp`), checks the PRG load address, and writes the `.neo` header
 plus load blocks. The header execute address defaults to `$1000`, so NeoBASIC's
-`LOAD "MINIZORK.NEO"` starts the game without a separate `SYS`.
+`LOAD "MINIZORK.NEO"` starts the game without a separate `SYS`. `make.rb` passes
+`--main-addr`, `--story-addr` (from the `story_start` label) and `--exec-addr`
+explicitly, so the resident story always loads where this build expects it.
 
 ```sh
-python3 tools/make_neo_executable.py temp/ozmoo temp/compmem.tmp MINIZORK.NEO
+python3 tools/make_neo_executable.py temp/ozmoo temp/compmem.tmp MINIZORK.NEO \
+    --story-addr 0x4600
 ```
 
 The executable still needs the generated `<GAME>.STORY` and `<GAME>.CFG`
 runtime sidecars in the Neo storage root for paged reads. `make.rb` names them
 after the story file's 8.3 basename, so different games do not overwrite each
 other's sidecars.
+
+## Neo6502 release layout
+
+A Neo6502 build (`ruby make.rb -t:neo6502 <game>.z3`) now writes a flat release
+package instead of a `.d64`, a `storage/` directory, or an `autostart.bas`:
+
+```
+dist/<game>/<GAME>.NEO      interpreter + resident story
+dist/<game>/<GAME>.STORY    byte-for-byte story file for paged VMEM reads
+dist/<game>/<GAME>.CFG      VMEM map and save configuration
+dist/<game>.zip             archive of the directory above
+```
+
+`<game>` is the story file's base name (`zork1`, `minizork`, ...); `<GAME>` is
+its FAT-style 8.3 form (`ZORK1`, `MINIZORK`, ...). Copy or unzip the directory
+onto the Neo's SD card and load `<GAME>.NEO` from there. Saves are created
+alongside the sidecars as `<GAME>.S00`. In the emulator, point its storage path
+at the same directory (for example `path:dist/minizork`) rather than expecting
+a nested `storage/` folder. `-s` starts the packaged `.NEO` that way.
 
 ## pics2asm.py
 

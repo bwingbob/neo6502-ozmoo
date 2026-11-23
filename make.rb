@@ -188,6 +188,7 @@ $compmem_filename = File.join($TEMPDIR, 'compmem.tmp')
 $universal_file = File.join($TEMPDIR, 'universal')
 $config_filename = File.join($TEMPDIR, 'config.tmp')
 $m65_loader_file = File.join($TEMPDIR, 'm65_loader')
+$neo_release_dir = nil
 
 $x_for_examine_releases = {
 	"r11-s860509" => "Trinity",
@@ -1399,6 +1400,91 @@ def neo_8_3_basename(name)
 	base
 end
 
+def neo_release_paths(storyname)
+	# The directory and zip use the story file's base name verbatim; the files
+	# inside use the FAT-style name the interpreter asks for at runtime.
+	game = neo_8_3_basename(storyname)
+	dist_root = File.join(__dir__, 'dist')
+	release_dir = File.join(dist_root, storyname)
+	{
+		dist_root: dist_root,
+		dir: release_dir,
+		zip: File.join(dist_root, "#{storyname}.zip"),
+		neo: File.join(release_dir, "#{game}.NEO"),
+		story: File.join(release_dir, "#{game}.STORY"),
+		cfg: File.join(release_dir, "#{game}.CFG")
+	}
+end
+
+def build_neo_release(storyname, config_data, vmem_data, vmem_contents)
+	if vmem_data.length > 512
+		puts "ERROR: Neo6502 VMEM map is #{vmem_data.length} bytes; maximum is 512 bytes."
+		exit 1
+	end
+
+	paths = neo_release_paths(storyname)
+	FileUtils.mkdir_p(paths[:dist_root])
+	FileUtils.rm_rf(paths[:dir])
+	FileUtils.rm_f(paths[:zip])
+	FileUtils.mkdir_p(paths[:dir])
+
+	neo_cfg_data = config_data.dup
+	neo_cfg_vmem = vmem_data.dup
+	limit_vmem_data(neo_cfg_vmem, 65535) if neo_cfg_vmem.length > 0
+	neo_cfg_data += neo_cfg_vmem
+	min_cfg_size = 512
+	if neo_cfg_data.length < min_cfg_size
+		neo_cfg_data += Array.new(min_cfg_size - neo_cfg_data.length, 0)
+	elsif (neo_cfg_data.length % 256) != 0
+		neo_cfg_data += Array.new(256 - (neo_cfg_data.length % 256), 0)
+	end
+
+	resident_bytes = ($dynmem_blocks + vmem_data[3]) * $VMEM_BLOCKSIZE
+	if resident_bytes > vmem_contents.bytesize
+		puts "ERROR: Neo6502 resident story needs #{resident_bytes} bytes, but only #{vmem_contents.bytesize} were built."
+		exit 1
+	end
+
+	File.binwrite(paths[:cfg], neo_cfg_data.pack('C*'))
+	File.binwrite(paths[:story], $story_file_data)
+	File.binwrite($compmem_filename, vmem_contents.byteslice(0, resident_bytes))
+
+	neo_tool = File.join(__dir__, 'tools', 'make_neo_executable.py')
+	neo_cmd = "#{$executables['PYTHON']} \"#{neo_tool}\" \"#{$ozmoo_file}\" \"#{$compmem_filename}\" " +
+		"\"#{paths[:neo]}\" --main-addr 0x#{'%04x' % $start_address} " +
+		"--story-addr 0x#{'%04x' % $storystart} --exec-addr 0x#{'%04x' % $start_address}"
+	puts neo_cmd if $verbose
+	unless system(neo_cmd)
+		puts "ERROR: There was a problem creating the Neo6502 executable."
+		exit 1
+	end
+
+	Dir.chdir(paths[:dist_root]) do
+		zip_cmd = "#{$executables['ZIP']} \"#{storyname}.zip\" \"#{storyname}\""
+		puts zip_cmd if $verbose
+		unless system(zip_cmd)
+			puts "ERROR: There was a problem creating a zip archive. The files are in #{paths[:dir]}"
+			exit 1
+		end
+	end
+
+	if $verbose
+		story_bytes = $story_file_data.length
+		story_blocks = (story_bytes + $VMEM_BLOCKSIZE - 1) / $VMEM_BLOCKSIZE
+		dynmem_bytes = $dynmem_blocks * $VMEM_BLOCKSIZE
+		map_bytes = vmem_data[0] * 256 + vmem_data[1]
+		paged_statmem_blocks = [$statmem_blocks - vmem_data[3], 0].max
+		puts "Neo6502 VMEM: total story bytes #{story_bytes}, 512-byte blocks #{story_blocks}; dynmem bytes #{dynmem_bytes}, dynmem blocks #{$dynmem_blocks}."
+		puts "Neo6502 VMEM: resident blocks #{$neo_resident_vmem_blocks}, preloaded blocks #{vmem_data[3]}, map entries #{vmem_data[2]}, map bytes #{map_bytes}, paged statmem blocks #{paged_statmem_blocks}."
+		puts "Neo6502 VMEM: REU=off, OPTIMIZE_VMEM=off, C128 banks=off."
+	end
+
+	$neo_release_dir = paths[:dir]
+	$bootdiskname = paths[:zip]
+	puts "Successfully built game as #{$bootdiskname}"
+	nil
+end
+
 def build_interpreter()
 	necessarysettings =  " --setpc #{$start_address} -DCACHE_PAGES=#{$CACHE_PAGES} -DSTACK_PAGES=#{$stack_pages} -D#{$ztype}=1"
 	necessarysettings +=  " -DCONF_TRK=#{$CONFIG_TRACK}" if $CONFIG_TRACK
@@ -1821,49 +1907,19 @@ def play(filename, storyname)
 				puts "Location of Neo6502 emulator is set, but executable was not found at #{$executables['NEO']}"
 				exit 0
 			end
-
-			interp_prg = File.join($TEMPDIR, "ozmoo")
-			story_prg  = $compmem_filename
-			unless File.exist?(interp_prg)
-				puts "Cannot auto-run Neo6502 build: expected #{interp_prg} was not found."
-				exit 0
-			end
-			unless File.exist?(story_prg)
-				puts "Cannot auto-run Neo6502 build: expected #{story_prg} was not found."
+			unless $neo_release_dir and File.directory?($neo_release_dir)
+				puts "Cannot auto-run Neo6502 build: no release directory was created."
 				exit 0
 			end
 
-			interp_data = File.binread(interp_prg)
-			story_data = File.binread(story_prg)
-			if interp_data.bytesize < 2 or story_data.bytesize < 2
-				puts "Cannot auto-run Neo6502 build: one of the generated PRG files is too small."
+			neo_name = "#{neo_8_3_basename(File.basename($neo_release_dir))}.NEO"
+			neo_path = File.join($neo_release_dir, neo_name)
+			unless File.exist?(neo_path)
+				puts "Cannot auto-run Neo6502 build: expected #{neo_path} was not found."
 				exit 0
 			end
 
-			interp_header_addr = interp_data.getbyte(0) + (interp_data.getbyte(1) << 8)
-
-			interp_is_prg = interp_header_addr >= 0x0800 && interp_header_addr <= 0xff00
-			interp_payload_size = interp_is_prg ? (interp_data.bytesize - 2) : interp_data.bytesize
-
-			interp_addr = interp_is_prg ? interp_header_addr : $start_address
-			story_addr = interp_addr + interp_payload_size
-
-			interp_raw = File.join($TEMPDIR, "ozmoo-neo-main.bin")
-			story_raw = File.join($TEMPDIR, "ozmoo-neo-story.bin")
-			if interp_is_prg
-				File.binwrite(interp_raw, interp_data.byteslice(2, interp_data.bytesize - 2))
-			else
-				File.binwrite(interp_raw, interp_data)
-			end
-			File.binwrite(story_raw, story_data)
-
-			interp_abs = File.expand_path(interp_raw)
-			story_abs = File.expand_path(story_raw)
-
-			command = "\"#{emu}\" cold " +
-			          "\"#{interp_abs}\"@#{interp_addr.to_s(16)} " +
-			          "\"#{story_abs}\"@#{story_addr.to_s(16)} " +
-			          "run@#{interp_addr.to_s(16)}"
+			command = "\"#{emu}\" cold \"#{neo_path}\" \"path:#{$neo_release_dir}\""
 		else
 			puts "Location of Neo6502 emulator unknown. Please set NEO executable location at start of make.rb"
 			exit 0
@@ -4437,26 +4493,6 @@ else
 	end
 end
 
-	if $target == 'neo6502'
-		neo_story_path = File.join(__dir__, 'storage', $neo_story_filename)
-		neo_story_data = $story_file_data || ''
-		# Neo6502 uses a flat story sidecar: a byte-for-byte copy of the complete
-		# story file, including dynmem. VMEM page numbers therefore map directly
-		# to file pages; callers must not apply the disk-layout nonstored_pages
-		# offset when reading from this sidecar.
-		unless neo_story_data.bytesize == $story_size
-			puts "ERROR: Neo6502 story sidecar size #{neo_story_data.bytesize} does not match story size #{$story_size}."
-			exit 1
-		end
-		FileUtils.mkdir_p(File.dirname(neo_story_path))
-		if neo_story_data.empty?
-			puts "ERROR: Neo6502 story sidecar would be empty."
-			exit 1
-		end
-		File.binwrite(neo_story_path, neo_story_data)
-		puts "Wrote Neo6502 story sidecar: #{neo_story_path} (#{neo_story_data.bytesize} bytes)." if $verbose
-	end
-
 ############################# End of moved block
 
 if $VMEM
@@ -4482,8 +4518,12 @@ when MODE_P
 	if sizediff >= 256 and sizediff < 512 then
 		$story_size -= 256;
 	end
-	diskimage_filename = File.join($TEMPDIR, "temp1.d64")
-	error = build_P(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks)
+	if $target == 'neo6502'
+		error = build_neo_release(storyname, build_config_data, build_vmem_data, vmem_contents)
+	else
+		diskimage_filename = File.join($TEMPDIR, "temp1.d64")
+		error = build_P(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks)
+	end
 when MODE_S1
 	diskimage_filename = File.join($TEMPDIR, "temp1.d64")
 	error = build_S1(storyname, diskimage_filename, build_config_data, build_vmem_data, vmem_contents, preload_max_vmem_blocks, extended_tracks, reserve_dir_track)
@@ -4518,40 +4558,6 @@ when MODE_ZIP
 else
 	puts "Unsupported build mode."
 	exit 1
-end
-
-if $target == 'neo6502' && $VMEM && !error
-	if vmem_data.length > 512
-		puts "ERROR: Neo6502 VMEM map is #{vmem_data.length} bytes; maximum is 512 bytes."
-		exit 1
-	end
-	storage_dir = File.join(__dir__, 'storage')
-	FileUtils.mkdir_p(storage_dir)
-	neo_config_path = File.join(storage_dir, $neo_config_filename)
-	neo_cfg_data = config_data.dup
-	neo_cfg_vmem = vmem_data.dup
-	if neo_cfg_vmem.length > 0
-		limit_vmem_data(neo_cfg_vmem, 65535)
-		neo_cfg_data += neo_cfg_vmem
-	end
-	min_cfg_size = 512
-	if neo_cfg_data.length < min_cfg_size
-		neo_cfg_data += Array.new(min_cfg_size - neo_cfg_data.length, 0)
-	elsif (neo_cfg_data.length % 256) != 0
-		neo_cfg_data += Array.new(256 - (neo_cfg_data.length % 256), 0)
-	end
-	File.binwrite(neo_config_path, neo_cfg_data.pack('C*'))
-	puts "Wrote Neo6502 VMEM config sidecar: #{neo_config_path} (#{neo_cfg_data.length} bytes)." if $verbose
-	if $verbose
-		story_bytes = $story_file_data.length
-		story_blocks = (story_bytes + $VMEM_BLOCKSIZE - 1) / $VMEM_BLOCKSIZE
-		dynmem_bytes = $dynmem_blocks * $VMEM_BLOCKSIZE
-		map_bytes = vmem_data[0] * 256 + vmem_data[1]
-		paged_statmem_blocks = [$statmem_blocks - vmem_data[3], 0].max
-		puts "Neo6502 VMEM: total story bytes #{story_bytes}, 512-byte blocks #{story_blocks}; dynmem bytes #{dynmem_bytes}, dynmem blocks #{$dynmem_blocks}."
-		puts "Neo6502 VMEM: resident blocks #{$neo_resident_vmem_blocks}, preloaded blocks #{vmem_data[3]}, map entries #{vmem_data[2]}, map bytes #{map_bytes}, paged statmem blocks #{paged_statmem_blocks}."
-		puts "Neo6502 VMEM: REU=off, OPTIMIZE_VMEM=off, C128 banks=off."
-	end
 end
 
 if !error and auto_play then 
