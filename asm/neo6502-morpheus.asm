@@ -140,7 +140,13 @@ neo_clear_row
 
 neo_kernal_prepare_lpref_name
 	; Converts SETNAM state (len + ptr to plain bytes) into a length-prefixed
-	; string for Neo6502 file API calls.
+	; string for Neo6502 file API calls.  Callers may be holding values in
+	; zp_temp/zp_temp+1 across a file API call (VMEM paging is one example),
+	; so preserve those two bytes here.
+	lda zp_temp + 1
+	pha
+	lda zp_temp
+	pha
 	lda neo_kernal_filename_ptr
 	sta zp_temp
 	lda neo_kernal_filename_ptr + 1
@@ -156,6 +162,10 @@ neo_kernal_prepare_lpref_name_copy
 	dey
 	bpl neo_kernal_prepare_lpref_name_copy
 neo_kernal_prepare_lpref_name_done
+	pla
+	sta zp_temp
+	pla
+	sta zp_temp + 1
 	clc
 	rts
 

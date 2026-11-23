@@ -3,6 +3,21 @@
 
 ; Storage bytes for neo header and filename operations
 neo_save_header !fill 26, 0
+neo_save_payload_size !byte 0, 0
+
+; The payload spans the saved ZP bytes, the stack and dynamic memory.  dynmem_size
+; is a runtime header-derived variable, not an assemble-time constant, so it must
+; be read from memory here; using the label address would make the save overrun
+; into resident VMEM (and truncate at restore time).
+neo_calc_save_payload_size
+	lda dynmem_size
+	clc
+	adc #<(stack_size + zp_bytes_to_save)
+	sta neo_save_payload_size
+	lda dynmem_size + 1
+	adc #>(stack_size + zp_bytes_to_save)
+	sta neo_save_payload_size + 1
+	rts
 
 ; neo_build_save_filename builds a length-prefixed save filename in neo_kernal_lpref_name.
 ; Input: A = slot digit as ASCII (e.g., $30 for slot 0)
@@ -65,9 +80,10 @@ neo_write_save_header
 	sta neo_save_header + 22
 	lda #>(stack_start - zp_bytes_to_save)
 	sta neo_save_header + 23
-	lda #<(stack_size + zp_bytes_to_save + dynmem_size)
+	jsr neo_calc_save_payload_size
+	lda neo_save_payload_size
 	sta neo_save_header + 24
-	lda #>(stack_size + zp_bytes_to_save + dynmem_size)
+	lda neo_save_payload_size + 1
 	sta neo_save_header + 25
 
 	clc
@@ -201,9 +217,10 @@ neo_save_game
 
 	jsr .swap_pointers_for_save
 
-	lda #<(stack_size + zp_bytes_to_save + dynmem_size)
+	jsr neo_calc_save_payload_size
+	lda neo_save_payload_size
 	sta neo_kernal_size
-	lda #>(stack_size + zp_bytes_to_save + dynmem_size)
+	lda neo_save_payload_size + 1
 	sta neo_kernal_size + 1
 
 	lda #4
@@ -300,12 +317,13 @@ neo_restore_game
 	cmp #>(stack_start - zp_bytes_to_save)
 	bne .nrg_fail_jump2
 
+	jsr neo_calc_save_payload_size
 	lda neo_save_header + 24
-	cmp #<(stack_size + zp_bytes_to_save + dynmem_size)
+	cmp neo_save_payload_size
 	bne .nrg_fail_jump2
 
 	lda neo_save_header + 25
-	cmp #>(stack_size + zp_bytes_to_save + dynmem_size)
+	cmp neo_save_payload_size + 1
 	bne .nrg_fail_jump2
 
 	lda #>.restore_msg
