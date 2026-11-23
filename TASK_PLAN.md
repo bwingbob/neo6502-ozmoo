@@ -1,529 +1,792 @@
-# Neo6502 Disk-Backed VMEM Implementation Plan
+# Neo6502 Native Save/Restore — Small Implementation Prompts
 
-## Goal
+Use one prompt at a time. Give the model only one numbered prompt, let it finish, review the diff, then continue to the next prompt.
 
-Implement disk-backed virtual memory for the Neo6502 target so a Z-machine story can exceed 64 KB resident memory. The first acceptance target is `examples/minizork.z3`, followed by existing Praxix regression behavior.
+All prompts assume this repository:
 
-The implementation is intentionally incremental. Each task below is a standalone prompt for a local 12B model and changes only one primary file. Do not implement later tasks while completing an earlier one.
+```text
+/home/bob/Documents/Projects/neo6502-ozmoo
+```
 
-## Architecture decision
-
-Use a Neo6502-specific VMEM build without claiming that every existing `MODE_*` image format works:
-
-- Keep Neo builds in the existing build-mode `P` selection initially; `P` becomes a Neo host-mode containing the interpreter plus preload/dynmem data, while statmem is read on demand from `storage/ozmoo.story`.
-- Set `$VMEM = true` for Neo6502 in `make.rb` rather than explicitly disabling it.
-- Generate `storage/ozmoo.story` as the complete story sidecar for paged loads.
-- Generate `storage/ozmoo.cfg` in VMEM format; Neo `read_track_sector` and `readblock` must consume it and the story sidecar.
-- Preserve the Neo flat-memory model: no C128-style banks, no REU, no `first_banked_memory_page` cache fallback, and no 6510 memory windows.
-- Keep a 512-byte VMEM block and two 256-byte disk blocks per VMEM block.
-- Keep dynmem resident. Only statmem may be paged.
-- Do not add a second storage format unless a later task proves the existing sidecars insufficient.
-
-This plan does not require implementing all Ozmoo disk build modes. It requires that the Neo target no longer reject large stories solely because the complete story does not fit resident RAM.
-
-## Existing invariants
-
-- Z-machine address state is a 3-byte address: `(z_address/z_pc high, mid, low)`.
-- `read_byte_at_z_address(a,x,y)` inputs are high/mid/low and returns the byte in `A`; `mempointer` must point to the matching 256-byte physical page after the call.
-- Dynmem is resident at `>story_start + z-page` for Z-pages below `nonstored_pages`.
-- VMEM block size is 512 bytes.
-- Each VMEM map entry consists of a high/tick byte and a low-byte Z-machine block number.
-- `readblocks_numblocks`, `readblocks_currentblock`, and `readblocks_mempos` describe a disk-to-RAM read in `asm/disk.asm`.
-- `neo_readblock` currently calculates its story offset and reads a 256-byte page through Morpheus file API file 2.
-- `neo_read_track_sector` currently reads from `ozmoo.cfg` through Morpheus file API file 3.
-- Neo KERNAL file channels 2 and 3 are used for story/config sidecars.
-
-## Acceptance criteria
+Common rules:
 
-The complete feature passes when:
+- Keep all commits local. Do not push.
+- Do not change C64, C128, Mega65, Plus/4, or X16 behavior.
+- Do not generate or commit files under `dist/`.
+- Use ACME assembly syntax.
+- If a named label or file cannot be found, stop and report instead of guessing.
 
-1. `env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s test/praxix.z5` still builds and passes `help`/`all`.
-2. `env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -s examples/minizork.z3` builds without `The whole story doesn't fit in memory`.
-3. The Neo emulator loads the generated interpreter and sidecars and reaches the MiniZork prompt.
-4. At the MiniZork prompt, basic navigation/inspection such as `look`, `inventory`, and `quit` completes.
-5. VMEM misses do not corrupt `z_pc`, `z_pc_mempointer`, `mempointer`, or dynmem.
-6. No Neo VMEM path uses C128 bank registers, REU operations, or C64/C128 hardware memory banking.
-
-## Task 1 - Remove the Neo P-mode/VMEM contradiction
-
-**Primary file:** `make.rb`
-
-**Standalone prompt:**
-
-In `make.rb`, make build mode P compatible with Neo disk-backed VMEM instead of using P exclusively as whole-story in-memory mode.
-
-1. Locate the Neo target restriction around `if mode != MODE_P and $target == 'neo6502'` and the target-only assignment at `$VMEM = ...`.
-2. Change `$VMEM` assignment so Neo6502 is included in VMEM builds. For now, use VMEM for Neo whenever the build is not Mega65/X16/ZIP semantics, but do not let Neo automatically enable `OPTIMIZE_VMEM` or REU.
-3. Keep the Neo default mode P unless a later task explicitly adds a Neo-supported disk build mode.
-4. Locate `build_P` and remove or isolate the size check `if $dynmem_and_vmem_size_bank_0 < $story_size` for Neo. It must remain for C64/P builds.
-5. Under Neo P-mode VMEM, `build_P` must continue building an interpreter plus resident/preloaded data; it must not attempt to copy the complete story into that resident block.
-6. Ensure `-p` remains either accepted with a zero/limited preload value or explicitly guarded. Do not allow `-p` assumptions that require REU or unsupported multi-disk layouts.
-7. Keep `$no_sector_preload` behavior compatible with VMEM; the build can use sector preload metadata but must be able to continue with zero preloaded statmem blocks.
-
-**Inputs:**
-- `$target`
-- `$VMEM`
-- `mode`
-- `$dynmem_and_vmem_size_bank_0`
-- `$story_size`
-- `$dynmem_blocks`
-- `$story_file_data`
-- `preload_max_vmem_blocks`
-
-**Outputs:**
-- `$VMEM` true for Neo P builds.
-- Neo P build continues even if the story is larger than resident memory.
-- Existing C64/P behavior remains unchanged.
-- Existing `S1/S2/D2/D3/71/81/ZIP` Neo restrictions remain in place unless a later task changes them.
+---
 
-**Edge cases:**
-- No preload data: `vmem_data` must still represent every resident VMEM mapping slot available.
-- Zero resident statmem blocks: VMEM startup must not assume a nonzero preload list.
-- A story just under resident capacity must remain a valid P-like build.
-- Do not calculate Neo resident capacity with C64 banking pages.
+## Prompt 1 — Disable the Neo save-device prompt
 
-**Validation:**
-- `ruby make.rb -t:neo6502 -s test/praxix.z5` builds.
-- `ruby make.rb -t:neo6502 -s examples/minizork.z3` passes the old size gate and reaches sidecar generation.
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/disk.asm.
 
-## Task 2 - Compute a Neo VMEM resident layout
+Find the routine named `maybe_ask_for_save_device`.
 
-**Primary file:** `make.rb`
+Add this as the first code inside that routine, before any existing code:
 
-**Standalone prompt:**
+    !ifdef TARGET_NEO6502 {
+        lda #8
+        sta disk_info + 4
+        clc
+        rts
+    }
 
-Add a Neo-only resident-layout calculation, isolated from C64/C128 disk layout code.
+Do not change the existing code for other targets. Do not change any other file.
 
-1. Keep story data in 512-byte Z-machine blocks.
-2. Calculate `$dynmem_blocks` from the Z-machine header/static-memory boundary using the existing Ozmoo machinery.
-3. Calculate total 512-byte story blocks.
-4. Calculate the maximum resident statmem 512-byte blocks based on the Neo 16-bit PRG/layout and the available VMEM RAM range, excluding dynmem, stack, cache, config, and interpreter-overlap areas.
-5. `vmem_data[2]` must remain the number of suggested VMEM entries.
-6. `vmem_data[3]` must remain the number of resident/preloaded blocks and must never exceed `vmem_data[2]` or the Neo resident map capacity.
-7. If no statmem can remain resident, set `vmem_data[2]`/`vmem_data[3]` to their practical zero or minimal values, while preserving a valid map header.
-
-**Inputs:**
-- `$story_file_data`
-- `$story_size`
-- `$VMEM_BLOCKSIZE`
-- `$dynmem_blocks`
-- `$CACHE_PAGES`
-- `$stack_pages`
-- Neo constants from `asm/constants-neo6502.asm`
+Validate with:
 
-**Outputs:**
-- A valid Neo VMEM map/preload layout without C64 disk-track assumptions.
-- `vmem_data[2]` = suggested block count.
-- `vmem_data[3]` = preloaded resident block count.
-- `preload_max_vmem_blocks` clamped to the real Neo resident block budget.
-
-**Edge cases:**
-- Odd final story size not divisible by 512: pad only in build output, never change Z-address semantics.
-- Z3 story size 128 KB maximum; Z5 256 KB; Z6-Z8 512 KB.
-- Map entry storage must fit `vmap_buffer_start..vmap_buffer_end`.
-- `cache_pages` must not be counted as VMEM resident story blocks.
-
-**Validation:**
-- Rebuild Praxix and compare the resident block count against the existing P baseline.
-- Build MiniZork and ensure `vmem_data[3]` is within available Neo RAM.
-
-## Task 3 - Generate Neo VMEM sidecars from resident and full-story data
-
-**Primary file:** `make.rb`
-
-**Standalone prompt:**
-
-Rewrite only the Neo-specific sidecar output block near the final build dispatch.
-
-1. For Neo VMEM builds, write `storage/ozmoo.story` as the full `$story_file_data`, not only `vmem_contents` or dynmem.
-2. Keep the existing P build behavior for Neo non-VMEM builds: full story data is the P sidecar.
-3. Write `storage/ozmoo.cfg` for VMEM builds by starting with `config_data`, appending `vmem_data`, and padding as needed.
-4. Preserve the existing minimum/padding behavior for `ozmoo.cfg` used by `neo_read_track_sector`.
-5. Do not include C64 disk-image track maps as if they were Neo storage offsets.
-6. Preserve the existing complete-story sidecar path for P mode until Task 1 proves it is safe to replace.
-
-**Inputs:**
-- `$target`
-- `$VMEM`
-- `$story_file_data`
-- `$vmem_contents`
-- `config_data`
-- `vmem_data`
-
-**Outputs:**
-- `storage/ozmoo.story` full 512-page-readable story in VMEM mode.
-- `storage/ozmoo.cfg` valid VMEM metadata in VMEM mode.
-- Existing P Praxix output remains the full-story sidecar.
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
 
-**Edge cases:**
-- Missing `storage/` directory: create it before `File.binwrite`.
-- Empty/full story: reject or fatal-build on zero-byte story data.
-- Config padding must not overwrite the config header.
-- VMEM map size in bytes must not exceed 512 bytes.
-
-**Validation:**
-- Inspect `ozmoo.story` size and prefix bytes against `$story_file_data`.
-- Inspect `ozmoo.cfg` and verify its VMEM header length and entry arrays are present.
-
-## Task 4 - Add 16-bit Morpheus seek/read primitives
-
-**Primary file:** `asm/neo6502-morpheus.asm`
-
-**Standalone prompt:**
-
-Add or harden low-level Morpheus file seek/read primitives needed by VMEM block paging. Reuse `neo_kernal_api_call`, `neo_api_param0..param5`, and existing channel/file-state variables.
-
-Define/implement these ACME labels:
-
-- `neo_kernal_seek_file` — inputs: `A=LFN`, `X=seek-low 16-bit offset`, `Y=seek-high 16-bit offset`; output: C set on error, status in `neo_kernal_status`; no other disk register contract.
-- `neo_kernal_read_file` — inputs: `A=LFN`, `X=<destination-page/low address?>`, `Y=>destination-page/high address?>`, with length fixed or explicit; output: C set on error, bytes returned in `A/X/Y` or a single existing `neo_kernal_size` word.
-
-Use the actual existing convention already used by `neo_readblock`: `neo_api_param0` channel, `neo_api_param1/2` destination, `neo_api_param3/4` 16-bit length, `neo_api_param5` unused. A 256-byte read is length `$0100` in param3/4.
-
-**Inputs:**
-- Story/config channel LFN
-- Absolute 16-/24-bit story offset
-- Destination 16-bit RAM page address
-- 256-byte or 512-byte block length
-
-**Outputs:**
-- C clear on success and `neo_kernal_status=0`; C set on Morpheus/API or EOF failure.
-- Destination memory filled for exactly the requested byte count.
+Report the exact diff and the build result. Do not push commits.
+```
 
-**Edge cases:**
-- Offset crosses a 64 KB page boundary.
-- Destination address is page-aligned.
-- API error/timeout after a `seek` or `read`.
-- Defensive close must not overwrite successful read status.
-- Preserve `X/Y` for callers only where existing Ozmoo calling conventions require it.
-
-**Validation:**
-- Build only; then add emulator smoke reads for 256-byte blocks 0 and 1.
-- Use a known MiniZork header/page and verify no read fills with zeros outside EOF.
-
-## Task 5 - Correct Neo story offset mapping
-
-**Primary file:** `asm/disk.asm`
-
-**Standalone prompt:**
-
-Complete and isolate `neo_readblock` in `asm/disk.asm` so it maps a Z-machine 256-byte block to an absolute 256-byte story sidecar offset.
-
-1. Preserve the existing `readblock` adjustment: `readblocks_currentblock_adjusted = readblocks_currentblock - nonstored_pages`.
-2. For Neo, if `readblocks_currentblock_adjusted` is negative/carry-set, fatal-error rather than reading a resident/dynmem address as statmem.
-3. Use the adjusted 16-bit offset as 256-byte block units.
-4. Convert it to an absolute byte offset: `block-index * 256`.
-5. Call Morpheus seek with channel 2 and the destination `readblocks_mempos`.
-6. Read exactly 256 bytes.
-7. Close channel 2 only after success or use defensive close semantics already in `neo_kernal_close`.
-
-**Current labels/functions:**
-- `readblock`
-- `readblocks_currentblock`
-- `readblocks_currentblock_adjusted`
-- `readblocks_mempos`
-- `neo_readblock`
-- `neo_open_story_file`
-
-**Inputs:**
-- `A/X/Y` not relied upon across calls.
-- `readblocks_currentblock` = Z-machine 256-byte page index.
-- `nonstored_pages` = first statmem 256-byte page index.
-- `readblocks_mempos` = destination 16-bit RAM address.
+---
 
-**Outputs:**
-- C clear on success.
-- `readblocks_mempos` unchanged by `neo_readblock`.
-- One 256-byte page loaded at the destination.
+## Prompt 2 — Skip Neo disk-swap messages
 
-**Edge cases:**
-- File offset exceeds 24-bit/16-bit arithmetic capacity.
-- Story block 0-1 can be dynmem and should never call this routine.
-- EOF or short read must set the existing fatal disk error path.
-- The two VMEM pages in a 512-byte block must remain independently readable.
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/disk.asm.
 
-**Validation:**
-- Praxix statmem page reads complete through VMEM and `all` passes.
-- MiniZork reaches prompt and `look` returns story text.
+Find `.insert_save_disk` and `.insert_story_disk` inside the save/restore zone.
 
-## Task 6 - Add Neo config metadata reads
-
-**Primary file:** `asm/disk.asm`
-
-**Standalone prompt:**
-
-Make `neo_read_track_sector` reliably read 256-byte sectors from `storage/ozmoo.cfg` and ensure the config/VMEM list is initialized once.
-
-1. Preserve the existing `neo_open_config_file` channel 3 setup.
-2. Interpret its current 256-byte sector addressing as a byte offset: `sector * 256 + track` only if a later format audit proves track contributes; for first implementation, keep the existing sector variable behavior and document it as an offset sector.
-3. Seek channel 3 to `sector * 256`.
-4. Read exactly 256 bytes into `readblocks_mempos`.
-5. If the generated VMEM config size is below 512 bytes, preserve the existing build padding and close behavior.
-6. Return C clear on success, C set on seek/read/EOF error.
-
-**Inputs:**
-- `A=track`, `X=sector`, `Y=device#` in `read_track_sector`.
-- `readblocks_mempos` destination.
-- `disk_info` config sector metadata, if present.
+At the very start of `.insert_save_disk`, add a TARGET_NEO6502 branch that stores 0 into `.last_disk` and jumps to `.dont_print_insert_save_disk`.
 
-**Outputs:**
-- One 256-byte config sector loaded.
-- Existing startup `prepare_static_high_memory` can parse the loaded config at `config_load_address`.
+At the very start of `.insert_story_disk`, add a TARGET_NEO6502 branch that returns immediately with RTS.
 
-**Edge cases:**
-- Config file missing.
-- Config file shorter than requested sector.
-- Config VMEM metadata crossing 256-byte boundaries.
-- 16-bit sector index overflow in the current C64 disk abstraction.
+Do not change behavior for other targets. Do not change any other file.
 
-**Validation:**
-- Startup loads a nonzero VMEM block count.
-- Praxix and MiniZork both have valid `vmap_used_entries`.
+Validate with:
 
-## Task 7 - Enforce flat-memory VMEM allocation
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
 
-**Primary file:** `asm/vmem.asm`
-
-**Standalone prompt:**
+Report the exact diff and the build result. Do not push commits.
+```
 
-Complete the Neo-specific removal of all C64/C128 bank/cache assumptions in VMEM.
-
-1. In `vmem.asm`, keep `vmem_blocksize = 512` and enforce it with a Neo compile-time error.
-2. Add explicit Neo branches in every resident-map calculation, cache check, old-block eviction, and page replacement path.
-3. Define one Neo invariant: every resident VMEM physical address is a normal 6502 page address and `mempointer` is exactly 16-bit `(high=page, low=0)`.
-4. In `load_blocks_from_index`, Neo must always call the non-cache `readblocks`/`readblock` load path unless cache buffering is needed for a two-page 512-byte load.
-5. In `read_byte_at_z_address`, dynmem remains the direct story-start page mapping.
-6. Add explicit Neo handling for `vmem_offset_in_block = 0/1` and 512-byte block replacement.
-7. Ensure no Neo branch falls through to C128 `vmem_cache_bank_index` or REU/REUBOOST code.
-
-**Inputs:**
-- `A/X/Y` Z-machine address conventions.
-- `vmap_*`, `nonstored_pages`, `vmem_offset_in_block`, `vmem_cache_*`.
-
-**Outputs:**
-- `mempointer` 16-bit physical pointer to a resident 256-byte page.
-- `A` contains the requested byte.
-- VMEM map and resident cache remain internally consistent.
-
-**Edge cases:**
-- Requested block is resident and already mapped.
-- Block miss with no free vmap entry.
-- PC points to the block being replaced.
-- Cache page points to the block being replaced.
-- 512-byte block spans two resident 256-byte pages.
-- Z-page equals dynmem boundary `nonstored_pages`.
+---
 
-**Validation:**
-- Praxix `all` passes.
-- MiniZork `look` and repeated room transitions pass.
-- Neo build has no runtime branch into C128 bank state.
+## Prompt 3 — Disable Ctrl-D on Neo
 
-## Task 8 - Fix PC address updates at 256-byte boundaries
-
-**Primary file:** `asm/memory.asm`
-
-**Standalone prompt:**
-
-Review and harden the Neo/VMEM behavior of:
-
-- `set_z_pc`
-- `inc_z_pc_page`
-- `get_page_at_z_pc`
-
-Do not change C64/C128 semantics unless a shared bug is proven by a runtime invariant.
-
-For Neo VMEM:
-
-1. `set_z_pc` must update `z_pc` and call `get_page_at_z_pc` or ensure `z_pc_mempointer` is valid before executing the next byte.
-2. `inc_z_pc_page` must increment `z_pc`/`z_pc_mempointer` consistently across 256-byte page boundaries and call `get_page_at_z_pc` at block/cache boundaries.
-3. `get_page_at_z_pc` must normalize `mempointer` and `z_pc_mempointer` to the resident physical page containing the Z-PC.
-4. Fast same-page/same-block behavior must not retain a stale pointer after a VMEM block swap.
-5. Preserve Y=0 when `get_page_at_z_pc` returns, matching existing Z-PC reader macro behavior.
-
-**Inputs:**
-- Initial Z-PC in `a,x,y` for `set_z_pc`.
-- Current `z_pc` and resident maps for page increment.
-- Z-PC Z-machine address for `get_page_at_z_pc`.
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/text.asm.
 
-**Outputs:**
-- `z_pc_mempointer` points to the correct resident 256-byte page.
-- `z_pc` remains the correct 3-byte Z-machine address.
-- `Y=0` on normal exits.
+Find the Ctrl-D handler:
 
-**Edge cases:**
-- Page increments from `$ff` to `$0100` and 24-bit Z-address carries.
-- VMEM block swap while Z-PC is in the swapped block.
-- Z-PC in dynmem versus statmem.
-- Z-PC in one 256-byte half of a 512-byte block.
-- A call/return changes Z-PC outside the cached block.
+    cmp #4 ; Ctrl-D to forget device# for saves
+    bne +
+    dec ask_for_save_device
+    jmp .did_something
 
-**Validation:**
-- Praxix opcode suite passes.
-- MiniZork executes a `call`/`return`, string text, object data, and dictionary lookup across VMEM misses.
+Wrap only those four lines in:
 
-## Task 9 - Initialize Neo VMEM startup state
+    !ifndef TARGET_NEO6502 {
+        ...existing Ctrl-D lines...
+    }
 
-**Primary file:** `asm/ozmoo.asm`
+Leave the surrounding Ctrl-K and Ctrl-U handling unchanged.
 
-**Standalone prompt:**
+Do not change any other file.
 
-Update Neo VMEM startup and ensure `calc_dynmem_size`, config loading, VMEM initialization, and first Z-PC mapping happen in the correct order.
+Validate with:
 
-For Neo:
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
 
-1. `!ifdef TARGET_NEO6502` must leave `SUPPORT_REU=0` and never use REU/REUBOOST.
-2. After `calc_dynmem_size`, set `vmap_first_ram_page` from `nonstored_pages + >story_start`.
-3. Set `vmap_unbanked_blocks = vmap_max_entries` or a more precise resident block count.
-4. Call `prepare_static_high_memory` before `insert_disks_at_boot`/VMEM first-load operations.
-5. Ensure startup loads/initializes resident/preloaded statmem blocks through the Neo disk/config path.
-6. The first Z-PC setup must call `set_z_pc` and obtain a valid resident pointer.
-7. Keep existing Neo P startup output and clear-screen behavior; do not add C64 startup/disk prompts.
+Report the exact diff and the build result. Do not push commits.
+```
 
-**Inputs:**
-- Story header static-memory address.
-- `config_load_address`/`ozmoo.cfg` data.
-- `vmap_max_entries`, `vmap_used_entries`, `nonstored_pages`.
-- Initial Z-PC from header.
+---
 
-**Outputs:**
-- Valid resident/page-map state before `z_execute`.
-- Valid initial Z-PC pointer.
-- No REU mode or C128 setup.
+## Prompt 4 — Update the Neo splash hint
 
-**Edge cases:**
-- No VMEM preloads.
-- Config VMEM metadata truncated or out of range.
-- Initial Z-PC points at dynmem or statmem.
-- Story static-memory boundary is not 256-byte/512-byte aligned.
-- Header read occurs before dynmem is complete.
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/splashlines.tpl.
 
-**Validation:**
-- Praxix startup reaches prompt.
-- MiniZork startup reaches prompt.
-- No C128/MMU or REU initialization functions execute.
+Find `splashline6`.
 
-## Task 10 - Define Neo Z-address mapping invariants
+Add a `TARGET_NEO6502` branch after the `TARGET_X16` branch and before the `SHOWUNDO` branch.
 
-**Primary file:** `asm/zaddress.asm`
+If `SHOWUNDO` is defined for Neo, display:
 
-**Standalone prompt:**
+    !pet " Ctrl: K=Key repeat U=Undo",0
 
-Add no platform-specific pointer memory unless needed. Hardening is limited to ensuring Neo flat-memory address increments/remapping feed `read_byte_at_z_address`/`write_next_byte` correctly.
+Otherwise display:
 
-1. Verify `set_z_address` stores Z-address high/mid/low and never modifies Neo banking state.
-2. Verify `read_next_byte` increments high/mid/low correctly and reads the next byte through `read_byte_at_z_address`.
-3. Verify `dec_z_address` and `skip_bytes_z_address` can perform carry/borrow without triggering X16 or C128 branches.
-4. Ensure `set_z_paddress` converts packed addresses using Z-version multipliers correctly.
-5. Ensure `write_next_byte` only writes dynmem; writing statmem remains a checked fatal error.
-6. Ensure `mempointer` low/high words do not retain stale bytes after a mapped read.
+    !pet "   Ctrl: K=Key repeat",0
 
-**Inputs:**
-- Z-address 3-byte `(high,mid,low)`.
-- Packed address in `A/X` for `set_z_paddress`.
-- Byte value in `A` for `write_next_byte`.
+Do not change the text for other targets. Do not change any other file.
 
-**Outputs:**
-- Correct next/previous Z-address state.
-- Correct byte read/write.
-- No Neo bank state.
+Validate with:
 
-**Edge cases:**
-- Address increment/borrow across 24-bit boundaries.
-- Z6/Z7 string/routine offsets.
-- Packed address conversion overflow.
-- Write above dynmem.
-- Read exactly at dynmem/statmem boundary.
-
-**Validation:**
-- Run Praxix suite and MiniZork text/object/string operations.
-- Compile Z3, Z5, and Z6 baseline builds if feasible.
-
-## Task 11 - Add Neo build diagnostics and test commands
-
-**Primary file:** `make.rb`
-
-**Standalone prompt:**
-
-Add concise diagnostics for Neo VMEM builds without changing non-Neo output.
-
-Print on verbose builds:
-
-- Total story bytes and 512-byte block count.
-- Dynmem bytes/blocks.
-- Resident/preloaded VMEM blocks.
-- VMEM map entry count and bytes.
-- Paged statmem block count.
-- Story sidecar and config sidecar paths and sizes.
-
-Also guard runtime-incompatible combinations:
-
-- Neo + VMEM + REU: fatal build-time combination.
-- Neo + VMEM + C128 bank constants: fatal build-time combination.
-- Neo + `OPTIMIZE_VMEM`: initially unsupported unless implementation explicitly removes C64 optimization assumptions.
-- Neo VMEM resident block count greater than `vmap_max_entries`: clamp or fatal.
-
-**Inputs:**
-- Existing build variables and `$VMEM`/`$target`.
-- Sidecar files after generation.
-
-**Outputs:**
-- Clear Neo build log.
-- Fail-fast build errors for unsupported combinations.
-- No behavior change for non-Neo targets.
-
-**Validation:**
-- Verbose Praxix build lists expected resident/paged values.
-- Verbose MiniZork build shows paged statmem and no REU/optimization mode.
-
-## Task 12 - Add VMEM runtime smoke coverage
-
-**Primary file:** `tests/test_builds.rb`
-
-**Standalone prompt:**
-
-Extend build tests to cover Neo VMEM assembly and MiniZork sidecar production.
-
-Add tests that:
-
-1. Execute/validate a Neo Praxix VMEM build if VMEM is enabled by the Neo build path.
-2. Build MiniZork as Neo VMEM and assert the build exits successfully.
-3. Assert `storage/ozmoo.story` exists and is at least the original story size or padded to VMEM granularity.
-4. Assert `storage/ozmoo.cfg` exists and contains a valid VMEM header length.
-5. Assert no mode-P whole-story-size rejection occurs for MiniZork.
-6. Keep emulator runtime checks separate/conditional if the test environment lacks the Neo emulator.
-
-**Inputs:**
-- Test story paths.
-- Neo executable/emulator availability.
-- Storage sidecar paths.
-
-**Outputs:**
-- Repeatable build checks for Neo VMEM.
-- Clear failures for missing sidecars or rejected builds.
-
-**Edge cases:**
-- Emulator absent.
-- `storage/` stale files from prior builds.
-- Story smaller/larger than resident capacity.
-- Config sidecar stale and not regenerated.
-
-**Validation:**
-- `make -C tests` passes.
-- MiniZork Neo build test passes in CI/build environments without runtime emulator.
-
-## Recommended implementation order
-
-1. Task 1: build flag/layout gating.
-2. Task 2: calculate layout.
-3. Task 3: write complete sidecars.
-4. Task 4: Morpheus seek/read primitive verification.
-5. Task 5: correct story offset mapping.
-6. Task 6: config metadata reads.
-7. Task 7: flat VMEM core.
-8. Task 8: Z-PC/boundary behavior.
-9. Task 9: startup order.
-10. Task 10: Z-address edge cases.
-11. Task 11: diagnostics.
-12. Task 12: tests.
-
-Do not combine Task 1 and Task 7 in a first implementation: first prove that the build pipeline emits sidecars and that an existing story can remain non-VMEM/P unchanged, then enable VMEM by flag.
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 5 — Generate the Neo save-slot filename
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/make.rb.
+
+Find the Neo-only block that writes `temp/neo-file-names.asm`. It currently defines `neo_story_filename` and `neo_config_filename`.
+
+Add a third generated label using the same `neo_base` value:
+
+    neo_save_filename
+        !text "<GAME>.S00"
+    neo_save_filename_len = * - neo_save_filename
+
+Replace `<GAME>` with the same uppercase 8-character base used for the story filename. For MiniZork this must produce `MINIZORK.S00`.
+
+Use Ruby interpolation in the existing heredoc, matching the style of the story/config names.
+
+Do not change any other generated files. Do not change any other target.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+    grep -n 'neo_save' temp/neo-file-names.asm
+
+Report the exact diff, the generated lines, and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 6 — Add Neo file-stat constants
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/constants-neo6502.asm.
+
+In the Neo API function constants section, add:
+
+    neo_api_fn_file_stat = $10
+
+Near the Neo error constants, add:
+
+    neo_api_error_no_file = $11
+
+Do not change existing constants. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 7 — Add a Neo file-stat helper
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/neo6502-morpheus.asm.
+
+Add a new routine named `neo_kernal_file_stat` near `neo_kernal_write_file_byte`.
+
+Contract:
+
+- Input: A/X/Y = pointer to a length-prefixed filename string.
+- Output: C clear if the file exists.
+- Output: `neo_api_param0..neo_api_param3` contain the 32-bit file length.
+- Output: `neo_api_param4` contains the attribute bitfield.
+- Output: C set if the API call fails.
+
+Implementation:
+
+- Put A into `neo_api_param0`.
+- Put X into `neo_api_param1`.
+- Put Y into `neo_api_param2`.
+- Put 0 into `neo_api_param3`, `neo_api_param4`, and `neo_api_param5`.
+- Call group `neo_api_group_fileio`, function `neo_api_fn_file_stat`, using `neo_kernal_api_call`.
+- Return directly with that routine's carry/status.
+
+Do not change any existing routine. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 8 — Add a bulk Neo file-write helper
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/neo6502-morpheus.asm.
+
+Add a new routine named `neo_kernal_write_file` immediately after `neo_kernal_read_file`.
+
+Copy the structure of `neo_kernal_read_file`, but use function `neo_api_fn_file_write`.
+
+Contract:
+
+- A = file channel.
+- X = source address low byte.
+- Y = source address high byte.
+- `neo_kernal_size` and `neo_kernal_size + 1` contain the requested byte count.
+- C clear means all bytes were written.
+- C set means API error or short write.
+
+Implementation:
+
+- param0 = A.
+- param1 = X.
+- param2 = Y.
+- param3 = requested count low.
+- param4 = requested count high.
+- param5 = 0.
+- Call group `neo_api_group_fileio`, function `neo_api_fn_file_write`.
+- On API error, return with C set.
+- Compare returned param3/param4 with the requested count.
+- If equal, set `neo_kernal_status = 0`, clear C, and return.
+- If short, copy returned count into `neo_kernal_size`, set `neo_kernal_status = neo_api_error_eof`, and return with C set.
+
+Do not change `neo_kernal_read_file`. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 9 — Create and include the Neo save/restore module
+
+```text
+Create a new file:
+
+    /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm
+
+The file should initially contain only:
+
+    ; Neo6502-native SAVE/RESTORE helpers.
+    ; This file is sourced inside disk.asm's save_restore zone.
+
+Do not add a `!zone` line to this file.
+
+Then edit /home/bob/Documents/Projects/neo6502-ozmoo/asm/disk.asm.
+
+Find the closing line:
+
+    } ; end zone save_restore
+
+Immediately before that line, add:
+
+    !ifdef TARGET_NEO6502 {
+        !source "save-restore-neo6502.asm"
+    }
+
+Do not change any other code. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 10 — Add the Neo save header buffer and filename builder
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add these storage bytes:
+
+    neo_save_header !fill 26, 0
+
+Add a routine named `neo_build_save_filename`.
+
+Contract:
+
+- Input: A = slot digit as ASCII, for example `$30` for slot 0.
+- Output: `neo_kernal_lpref_name` contains the length-prefixed save filename.
+- The filename length must come from `neo_save_filename_len`.
+- The last character must be replaced with the value in A.
+
+Implementation steps:
+
+1. Copy `neo_save_filename_len` bytes from `neo_save_filename` into `neo_kernal_lpref_name + 1`.
+2. Store `neo_save_filename_len` into `neo_kernal_lpref_name`.
+3. Store A into `neo_kernal_lpref_name + neo_save_filename_len`.
+4. Return with C clear.
+
+Use X as the copy index. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 11 — Add the Neo save-header writer
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_write_save_header`.
+
+Contract:
+
+- Input: A = slot digit as ASCII.
+- Uses the existing `.inputstring` buffer for the 14-character comment.
+- Fills all 26 bytes of `neo_save_header`.
+- Returns with C clear.
+
+Header layout:
+
+- bytes 0..5: ASCII bytes `O`, `Z`, `M`, `S`, `A`, `V`
+- byte 6: value 1
+- byte 7: slot digit from A
+- bytes 8..21: 14 bytes copied from `.inputstring`, padding missing bytes with 0
+- bytes 22..23: 16-bit little-endian value `stack_start - zp_bytes_to_save`
+- bytes 24..25: 16-bit little-endian value `stack_size + zp_bytes_to_save + dynmem_size`
+
+Use X/Y as loop counters. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 12 — Add the Neo save-header reader
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_read_save_header`.
+
+Contract:
+
+- Reads exactly 26 bytes from file channel 3 into `neo_save_header`.
+- Uses `neo_kernal_read_file`.
+- Set `neo_kernal_size` to 26 before the read.
+- File channel 3 must already be open.
+- Returns C clear only when bytes 0..5 are `OZMSAV` and byte 6 is 1.
+- Returns C set for any API error, short read, bad magic, or bad version.
+
+Do not validate the slot byte in this routine. Do not validate addresses or size in this routine. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 13 — Add a header comment printer
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_print_save_comment`.
+
+Contract:
+
+- Prints bytes 8..21 of `neo_save_header` using `s_printchar`.
+- Stops early at a zero byte.
+- Prints at most 14 characters.
+- Does not add a newline.
+- Returns with C clear.
+
+Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 14 — Implement Neo save_game
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_save_game`.
+
+It must use the existing save/restore zone labels:
+
+- `.saveslot_msg_save`
+- `.saveslot_msg`
+- `.input_alphanum`
+- `.inputstring`
+- `.savename_msg`
+- `.save_msg`
+- `.swap_pointers_for_save`
+
+Behavior:
+
+1. Print `.saveslot_msg_save`, then `.saveslot_msg`.
+2. Call `.input_alphanum`.
+3. If X is not 1, return failure.
+4. Read the slot digit from `.inputstring`.
+5. Reject slots where the digit is greater than or equal to `first_unavailable_save_slot_charcode`.
+6. Print `.savename_msg`.
+7. Call `.input_alphanum`.
+8. If X is 0, return failure.
+9. Print `.save_msg`.
+10. Call `neo_write_save_header` with the slot digit.
+11. Call `neo_build_save_filename` with the slot digit.
+12. Open file channel 2 with secondary address 3 using `kernal_setlfs` and `kernal_open`.
+13. Call `kernal_chkout` for channel 2.
+14. Set `neo_kernal_size` to 26 and call `neo_kernal_write_file` with `neo_save_header`.
+15. If that fails, close channel 2 and return failure.
+16. Call `.swap_pointers_for_save`.
+17. Set `neo_kernal_size` to `stack_size + zp_bytes_to_save + dynmem_size`.
+18. Call `neo_kernal_write_file` starting at `stack_start - zp_bytes_to_save`.
+19. Close channel 2.
+20. Call `.swap_pointers_for_save` again.
+21. Clear the window with `erase_window`.
+22. Return success with A=0, X=1, C clear.
+
+For failure, close any open channel, clear the window, and return A=0, X=0.
+
+Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 15 — Implement Neo restore_game
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_restore_game`.
+
+It must use the existing save/restore zone labels:
+
+- `.saveslot_msg_restore`
+- `.saveslot_msg`
+- `.input_alphanum`
+- `.inputstring`
+- `.restore_msg`
+- `.swap_pointers_for_save`
+
+Behavior:
+
+1. Print `.saveslot_msg_restore`, then `.saveslot_msg`.
+2. Call `.input_alphanum`.
+3. If X is not 1, return failure.
+4. Read the slot digit from `.inputstring`.
+5. Reject slots where the digit is greater than or equal to `first_unavailable_save_slot_charcode`.
+6. Build the filename with `neo_build_save_filename`.
+7. Open file channel 3 with secondary address 0 using `kernal_setlfs` and `kernal_open`.
+8. Call `kernal_chkin` for channel 3.
+9. Call `neo_read_save_header`.
+10. If that fails, close channel 3 and return failure.
+11. Check `neo_save_header + 7` equals the requested slot digit. If not, fail.
+12. Check `neo_save_header + 22..23` equals little-endian `stack_start - zp_bytes_to_save`. If not, fail.
+13. Check `neo_save_header + 24..25` equals little-endian `stack_size + zp_bytes_to_save + dynmem_size`. If not, fail.
+14. Print `.restore_msg`.
+15. Call `.swap_pointers_for_save`.
+16. Set `neo_kernal_size` from `neo_save_header + 24..25`.
+17. Call `neo_kernal_read_file` with destination `stack_start - zp_bytes_to_save`, using file channel 3.
+18. Close channel 3.
+19. Call `.swap_pointers_for_save` again.
+20. Clear the window with `erase_window`.
+21. Call `get_page_at_z_pc`.
+22. Return success with A=0, X=1, C clear.
+
+For failure, close any open channel, clear the window, and return A=0, X=0.
+
+Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 16 — Implement Neo list_save_files
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/save-restore-neo6502.asm.
+
+Add a routine named `neo_list_save_files`.
+
+Behavior:
+
+1. Print a newline with `s_printchar`.
+2. Set X to `disk_info + 1`, the number of save slots.
+3. Set an index Y to 0.
+4. For each slot:
+   - print the ASCII digit `$30 + Y`;
+   - print `": "`;
+   - build the filename by calling `neo_build_save_filename` with `$30 + Y`;
+   - call `neo_kernal_file_stat`;
+   - if the stat call fails, print `"(empty)"`;
+   - otherwise open channel 3 read-only, CHKIN, call `neo_read_save_header`, close channel 3;
+   - if header validation succeeds, call `neo_print_save_comment`;
+   - if header validation fails, print `"(invalid)"`;
+   - print a newline.
+5. Continue until all slots are printed.
+6. Return A=1, C clear.
+
+Use static strings inside this module for `": "`, `"(empty)"`, and `"(invalid)"`.
+
+Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 17 — Route Neo save/restore calls to the new module
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/asm/disk.asm.
+
+Add early TARGET_NEO6502 jumps in three existing routines:
+
+1. At the start of `list_save_files`, add:
+
+       !ifdef TARGET_NEO6502 {
+           jmp neo_list_save_files
+       }
+
+2. At the start of `restore_game`, add:
+
+       !ifdef TARGET_NEO6502 {
+           jmp neo_restore_game
+       }
+
+3. At the start of `save_game`, add:
+
+       !ifdef TARGET_NEO6502 {
+           jmp neo_save_game
+       }
+
+Do not remove the existing generic code. Do not change other targets. Do not change any other file.
+
+Validate with:
+
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+
+Report the exact diff and the build result. Do not push commits.
+```
+
+---
+
+## Prompt 18 — Create the Neo save/restore emulator test skeleton
+
+```text
+Create a new executable script:
+
+    /home/bob/Documents/Projects/neo6502-ozmoo/tools/test-neo6502-save-restore.sh
+
+Start by copying the structure of `tools/test-neo6502-smoke.sh`.
+
+Keep these parts:
+
+- ROOT_DIR / TOOLS_DIR discovery
+- STORY, OZMOO_HOME, FIRMWARE_ROOT, EMULATOR, FONT_HEADER variables
+- WORKDIR defaulting to `/tmp/opencode/neo-save-restore`
+- cleanup trap that kills the emulator
+- require_command and require_file helpers
+- build step
+- raw load file preparation
+- emulator start with `path:$WORKDIR/storage`
+- xdotool window discovery
+- send_line helper
+- screenshot decode with `tools/decode_neo_console.py`
+
+For now, after boot, send only:
+
+    look
+
+Do not add save/restore assertions yet. Do not change any other file.
+
+Validate by running:
+
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-save-restore.sh
+
+The script should exit 0 and leave no emulator process running.
+
+Report the script and test result. Do not push commits.
+```
+
+---
+
+## Prompt 19 — Add the save half of the emulator test
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/tools/test-neo6502-save-restore.sh.
+
+After the initial boot delay, inject these commands with `send_line`:
+
+    save
+    0
+    TEST SAVE
+
+Then add assertions:
+
+1. The decoded console must not contain `Device#`.
+2. The decoded console must contain `TEST SAVE`.
+3. This file must exist:
+
+       $WORKDIR/storage/MINIZORK.S00
+
+4. Add a Python check that reads the first 26 bytes of `MINIZORK.S00` and verifies:
+   - bytes 0..5 are `b"OZMSAV"`;
+   - byte 6 is 1;
+   - byte 7 is ASCII `0`;
+   - bytes 8..21 start with `b"TEST SAVE"`.
+
+Do not add restore assertions yet. Do not change any other file.
+
+Run:
+
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-save-restore.sh
+
+Report the test result and any decoded console output on failure. Do not push commits.
+```
+
+---
+
+## Prompt 20 — Add the restore half of the emulator test
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/tools/test-neo6502-save-restore.sh.
+
+After the save assertions, inject this command:
+
+    open mailbox
+
+Then inject:
+
+    restore
+    0
+
+Add assertions:
+
+1. The decoded console must not contain `Disk error`.
+2. The decoded console must not contain `Device#`.
+3. The decoded console must contain `WEST OF HOUSE`.
+4. The decoded console must not contain `OPENING THE SMALL MAILBOX REVEALS A LEAFLET.` after the final restore prompt.
+
+If the screen only shows the latest page and not the full history, adjust the assertion to check the final screen text near the prompt instead of the whole transcript.
+
+Do not change any other file.
+
+Run:
+
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-save-restore.sh
+
+Report the test result and any decoded console output on failure. Do not push commits.
+```
+
+---
+
+## Prompt 21 — Add persistence across emulator restart
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/tools/test-neo6502-save-restore.sh.
+
+After the in-session restore assertions:
+
+1. Kill the emulator using the existing `EMU_PID` cleanup logic.
+2. Set `EMU_PID=""`.
+3. Start the emulator again with the same `path:$WORKDIR/storage` argument.
+4. Wait for the window.
+5. Send:
+
+       restore
+       0
+
+6. Assert that `WEST OF HOUSE` appears again.
+7. Assert that no `Disk error` or `Device#` appears.
+
+Make sure the EXIT trap still kills the second emulator process.
+
+Do not change any other file.
+
+Run:
+
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-save-restore.sh
+
+Report the test result. Do not push commits.
+```
+
+---
+
+## Prompt 22 — Wire the new test into the test tooling
+
+```text
+Edit only /home/bob/Documents/Projects/neo6502-ozmoo/tests/Makefile and /home/bob/Documents/Projects/neo6502-ozmoo/tools/README.md.
+
+In `tests/Makefile`, add two phony-style targets:
+
+    neo-smoke:
+        NEO_FIRMWARE_ROOT=$${NEO_FIRMWARE_ROOT:-/tmp/opencode/neo-firmware} ../tools/test-neo6502-smoke.sh
+
+    neo-save-restore:
+        NEO_FIRMWARE_ROOT=$${NEO_FIRMWARE_ROOT:-/tmp/opencode/neo-firmware} ../tools/test-neo6502-save-restore.sh
+
+Do not add the emulator tests to `all`, because they require the firmware checkout and X11 tools.
+
+In `tools/README.md`, add a short section documenting both commands:
+
+    make -C tests neo-smoke
+    make -C tests neo-save-restore
+
+Mention that the save/restore test uses an isolated storage directory under `/tmp/opencode/neo-save-restore`.
+
+Do not change any other file. Do not push commits.
+```
+
+---
+
+## Prompt 23 — Final verification
+
+```text
+Run these commands from /home/bob/Documents/Projects/neo6502-ozmoo:
+
+    env OZMOO_HOME=/tmp/ozmoo-home make -C tests
+    env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -P examples/minizork.z3
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
+    NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-save-restore.sh
+    pgrep -a -x neo || true
+    git status --short
+
+Report:
+
+- test results;
+- whether any `neo` process is still running;
+- changed and untracked files;
+- any failures.
+
+Do not commit generated files under `dist/` or `storage/`. Do not push commits.
+```

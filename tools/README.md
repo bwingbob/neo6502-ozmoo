@@ -29,6 +29,19 @@ be overridden with `NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
 `NEO_SMOKE_STORY`, `OZMOO_HOME`, `NEO_SMOKE_SKIP_BUILD`, and the timing and
 screen-geometry variables named at the top of the script.
 
+The emulator tests are also available through `tests/Makefile`:
+
+```sh
+make -C tests neo-smoke
+make -C tests neo-save-restore
+```
+
+They are deliberately not part of `make -C tests all`, because they need a
+Neo firmware checkout and X11 tools. The save/restore test uses an isolated
+storage directory under `/tmp/opencode/neo-save-restore`; it copies the
+generated `MINIZORK.STORY` and `MINIZORK.CFG` sidecars there and verifies the
+native `MINIZORK.S00` save file, including an emulator restart.
+
 ## make_neo_executable.py
 
 Wraps a Neo6502 Ozmoo build into a single `.neo` executable. It takes the

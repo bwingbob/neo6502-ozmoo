@@ -312,6 +312,22 @@ neo_kernal_write_file_byte
 	ldx #neo_api_fn_file_write
 	jmp neo_kernal_api_call
 
+neo_kernal_file_stat
+	; In: A/X/Y = pointer to a length-prefixed filename string
+	; Out: C clear if file exists, C set on error
+	; Out: neo_api_param0..param3 = 32-bit file length
+	; Out: neo_api_param4 = attribute bitfield
+	sta neo_api_param0
+	stx neo_api_param1
+	sty neo_api_param2
+	lda #0
+	sta neo_api_param3
+	sta neo_api_param4
+	sta neo_api_param5
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_stat
+	jmp neo_kernal_api_call
+
 ; --- KERNAL-compatible adapter entrypoints ---
 
 neo_kernal_setnam
@@ -697,6 +713,57 @@ neo_kernal_read_file_eof
 
 neo_kernal_read_file_error
 	; API error or timeout. Preserve status from neo_kernal_api_call and return C set.
+	sec
+	rts
+
+neo_kernal_write_file
+	; Write to file. Inputs: A=LFN, X=src low, Y=src high, neo_kernal_size=requested count (low/high).
+	; Parameter placement per neo_readblock convention:
+	; param0=A (LFN), param1=X (src low), param2=Y (src high),
+	; param3=size_low (from neo_kernal_size), param4=size_high (from neo_kernal_size+1), param5=0.
+	sta neo_api_param0
+	stx neo_api_param1
+	sty neo_api_param2
+	lda neo_kernal_size
+	sta neo_api_param3
+	lda neo_kernal_size + 1
+	sta neo_api_param4
+	lda #0
+	sta neo_api_param5
+	lda #neo_api_group_fileio
+	ldx #neo_api_fn_file_write
+	jsr neo_kernal_api_call
+	bcs neo_kernal_write_file_error
+
+; Compare the returned 16-bit count with the requested count.
+	lda neo_api_param3
+	cmp neo_kernal_size
+	bne neo_kernal_write_file_short
+	lda neo_api_param4
+	cmp neo_kernal_size + 1
+	bne neo_kernal_write_file_short
+
+neo_kernal_write_file_success
+	lda #0
+	sta neo_kernal_status
+	clc
+	rts
+
+neo_kernal_write_file_short
+	; Short write: copy the real returned count.
+	lda neo_api_param3
+	sta neo_kernal_size
+	lda neo_api_param4
+	sta neo_kernal_size + 1
+
+neo_kernal_write_file_eof
+	lda #neo_api_error_eof
+	sta neo_kernal_status
+	sec
+	rts
+
+neo_kernal_write_file_error
+	; API error. Preserve status from neo_kernal_api_call and return C set.
 	sec
 	rts
 

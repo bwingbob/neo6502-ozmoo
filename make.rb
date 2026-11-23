@@ -4219,6 +4219,7 @@ if $target == 'neo6502'
 	neo_base = neo_8_3_basename(storyname)
 	$neo_story_filename = "#{neo_base}.STORY"
 	$neo_config_filename = "#{neo_base}.CFG"
+	$neo_save_filename = "#{neo_base}.S00"
 	neo_file_names = <<~ASM
 		neo_story_filename
 		\t!text "#{$neo_story_filename}"
@@ -4226,9 +4227,12 @@ if $target == 'neo6502'
 		neo_config_filename
 		\t!text "#{$neo_config_filename}"
 		neo_config_filename_len = * - neo_config_filename
+		neo_save_filename
+		\t!text "#{$neo_save_filename}"
+		neo_save_filename_len = * - neo_save_filename
 	ASM
 	File.write(File.join($TEMPDIR, 'neo-file-names.asm'), neo_file_names)
-	puts "Neo6502 runtime files: #{$neo_story_filename}, #{$neo_config_filename}." if $verbose
+	puts "Neo6502 runtime files: #{$neo_story_filename}, #{$neo_config_filename}, #{$neo_save_filename}." if $verbose
 end
 
 # Set $no_sector_preload if we can be almost certain it won't be needed anyway

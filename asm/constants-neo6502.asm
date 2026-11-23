@@ -120,6 +120,7 @@ neo_api_fn_file_read  = $08
 neo_api_fn_file_write = $09
 neo_api_fn_file_size  = $0a
 neo_api_fn_file_delete= $0d
+neo_api_fn_file_stat   = $10
 
 neo_api_file_mode_read              = $00
 neo_api_file_mode_write             = $01
@@ -130,6 +131,7 @@ neo_api_error_ok   = $00
 ; TODO(neo6502): Confirm canonical EOF error code for API_ERROR via docs/runtime
 ; probing. Current adapter behavior expects $02 for EOF.
 neo_api_error_eof  = $02
+neo_api_error_no_file= $11
 
 ; --- Neo6502 Morpheus adapter bindings ---
 ; Route KERNAL entrypoints used by Ozmoo through local adapter routines.

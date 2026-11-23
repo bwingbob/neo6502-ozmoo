@@ -69,6 +69,12 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
     env OZMOO_HOME="$OZMOO_HOME" ruby make.rb -t:neo6502 -v "$STORY"
 fi
 
+STORY_LOAD="$(sed -n 's/^[[:space:]]*story_start[[:space:]]*=[[:space:]]*$\([0-9A-Fa-f][0-9A-Fa-f]*\).*/\1/p' temp/acme_labels.txt | head -n 1)"
+[[ -n "$STORY_LOAD" ]] || {
+    echo "ERROR: could not find story_start in temp/acme_labels.txt" >&2
+    exit 1
+}
+
 echo "Preparing raw emulator load files..."
 tail -c +3 temp/ozmoo > temp/ozmoo-neo-main.bin
 cp temp/compmem.tmp temp/ozmoo-neo-story.bin
@@ -79,7 +85,7 @@ echo "Starting emulator..."
 "$EMULATOR" \
     cold \
     "$ROOT_DIR/temp/ozmoo-neo-main.bin@1000" \
-    "$ROOT_DIR/temp/ozmoo-neo-story.bin@4600" \
+    "$ROOT_DIR/temp/ozmoo-neo-story.bin@$STORY_LOAD" \
     run@1000 > "$LOG" 2>&1 &
 EMU_PID=$!
 

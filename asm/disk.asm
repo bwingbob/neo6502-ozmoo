@@ -1091,6 +1091,9 @@ disk_error
 .list_save_files_zp = z_operand_value_low_arr + 6 ; 2 bytes
 	
 list_save_files
+!ifdef TARGET_NEO6502 {
+	jmp neo_list_save_files
+}
 	lda #13
 	jsr s_printchar
 	ldx	first_unavailable_save_slot_charcode
@@ -1282,7 +1285,11 @@ directory_name_len = * - directory_name
 .disk_error_msg
 	!pet 13,"Disk error #",0
 .insert_save_disk
-!ifndef TARGET_X16 {	
+!ifdef TARGET_NEO6502 {
+	lda #0
+	sta .last_disk
+	jmp .dont_print_insert_save_disk
+} else ifndef TARGET_X16 {
 	ldx disk_info + 4 ; Device# for save disk
 	lda current_disks - 8,x
 	sta .last_disk
@@ -1309,7 +1316,9 @@ directory_name_len = * - directory_name
 	
 
 .insert_story_disk
-!ifndef TARGET_X16 {
+!ifdef TARGET_NEO6502 {
+	rts
+} else ifndef TARGET_X16 {
 	ldy .last_disk
 	beq + ; Save disk was in drive before, no need to change
 	bmi + ; The drive was empty before, no need to change disk now
@@ -1322,6 +1331,12 @@ directory_name_len = * - directory_name
 	rts
 
 maybe_ask_for_save_device
+!ifdef TARGET_NEO6502 {
+	lda #8
+	sta disk_info + 4
+	clc
+	rts
+}
 !ifdef TARGET_X16 {
 	; Always use device 8 on X16
 	lda #8
@@ -1375,6 +1390,10 @@ maybe_ask_for_save_device
 }
 	
 restore_game
+
+!ifdef TARGET_NEO6502 {
+	jmp neo_restore_game
+}
 
 !ifdef TARGET_C128 {
 	lda #0
@@ -1481,6 +1500,10 @@ restore_game
 	rts
 
 save_game
+
+!ifdef TARGET_NEO6502 {
+	jmp neo_save_game
+}
 
 !ifdef TARGET_C128 {
 	lda #0
@@ -3035,6 +3058,9 @@ do_restore_undo
 
 }
 
+!ifdef TARGET_NEO6502 {
+        !source "save-restore-neo6502.asm"
+    }
 } ; end zone save_restore
 
 } ; end zone disk
