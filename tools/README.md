@@ -18,15 +18,17 @@ used to turn the leaflet's continuation into `BH!CJ...`, and checks the status
 line and bottom prompt. The `puzzles, and descriptions` assertion also catches
 resident VMEM reaching the C64-compatible I/O window: a story block mapped over
 `$d020`/`$d021` was silently rewritten by `init_screen_colours` and rendered as
-`puzzlesthe cof escriptions`. It uses `decode_neo_console.py` to match screenshot
-pixels against the firmware's `font_5x7.h`, so no OCR is involved.
+`puzzlesthe cof escriptions`. It also asserts that only the top status line uses
+inverse video colours on Neo6502. It uses `decode_neo_console.py` to match
+screenshot pixels against the firmware's `font_5x7.h`, so no OCR is involved.
 
 ```sh
 NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
 ```
 
-The script writes its screenshot, decoded text grid, and emulator log under
-`/tmp/opencode/neo-smoke`. It needs `ruby`, `python3` with Pillow, `xdotool`,
+The script writes its screenshot, decoded text grid, inverse-video report, and
+emulator log under `/tmp/opencode/neo-smoke`. It needs `ruby`, `python3` with
+Pillow, `xdotool`,
 ImageMagick `import`, an SDL display, and a Neo firmware checkout containing
 `emulator/neo` and `firmware/common/include/interface/font_5x7.h`. Defaults can
 be overridden with `NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
@@ -52,8 +54,12 @@ the prompt.
 ## decode_neo_console.py
 
 Matches screenshot pixels against the firmware's `font_5x7.h` to recover the
-console text used by the Neo smoke and save/restore assertions. It is a test
-helper, not part of the interpreter or the game.
+console text used by the Neo smoke and save/restore assertions. Rows whose
+samples are mostly foreground-coloured are decoded as inverse video, which lets
+the Neo status line be checked without losing the surrounding text. With
+`--report-inverted`, it also writes those row numbers to stderr as
+`INVERTED_ROWS=...`. It is a test helper, not part of the interpreter or the
+game.
 
 One known artefact: Praxix's banner is decoded as `Type "help" ... "guit" to
 exit`, although the interpreter prints `quit`. The decoder compares the first

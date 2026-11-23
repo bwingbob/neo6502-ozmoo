@@ -109,6 +109,7 @@ neo_api_fn_clear_screen = $0c
 neo_api_fn_cursor_pos = $0d
 neo_api_fn_clear_region = $0e
 neo_api_fn_set_text_color = $0f
+neo_api_fn_read_text_color = $12 ; Console 18: ink/paper into param0/param1
 
 neo_api_fn_load_file  = $02
 neo_api_fn_store_file = $03

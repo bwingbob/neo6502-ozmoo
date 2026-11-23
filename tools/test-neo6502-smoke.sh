@@ -23,6 +23,7 @@ mkdir -p "$WORKDIR"
 LOG="$WORKDIR/emulator.log"
 SCREENSHOT="$WORKDIR/screen.png"
 DECODED="$WORKDIR/decoded.txt"
+INVERTED_REPORT="$WORKDIR/inverted.txt"
 
 EMU_PID=""
 WINDOW_ID=""
@@ -77,7 +78,7 @@ require_file "$RELEASE_DIR/$GAME_8_3.NEO"
 require_file "$RELEASE_DIR/$GAME_8_3.STORY"
 require_file "$RELEASE_DIR/$GAME_8_3.CFG"
 
-rm -f "$LOG" "$SCREENSHOT" "$DECODED"
+rm -f "$LOG" "$SCREENSHOT" "$DECODED" "$INVERTED_REPORT"
 
 echo "Starting emulator with the packaged .NEO..."
 "$EMULATOR" \
@@ -117,7 +118,8 @@ sleep "$FINAL_DELAY"
 
 echo "Capturing console..."
 import -window "$WINDOW_ID" "$SCREENSHOT"
-python3 "$TOOLS_DIR/decode_neo_console.py" "$SCREENSHOT" "$FONT_HEADER" > "$DECODED"
+python3 "$TOOLS_DIR/decode_neo_console.py" --report-inverted \
+    "$SCREENSHOT" "$FONT_HEADER" > "$DECODED" 2> "$INVERTED_REPORT"
 
 failures=0
 
@@ -145,6 +147,13 @@ expect_text '"WELCOME TO ZORK, a game of adventure'
 expect_text ">read leaflet"
 expect_regex '^00: West of House'
 expect_regex '^29: >'
+
+# Only the top status line is inverse video on Neo6502.
+if ! grep -Fq 'INVERTED_ROWS=0' "$INVERTED_REPORT"; then
+    echo "FAIL: expected only row 0 to use inverse video colours" >&2
+    cat "$INVERTED_REPORT" >&2
+    failures=$((failures + 1))
+fi
 
 if grep -Fq "BH!CJ" "$DECODED"; then
     echo "FAIL: known corrupted leaflet text is present" >&2

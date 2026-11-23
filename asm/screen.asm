@@ -1196,6 +1196,21 @@ draw_status_line
 	lda zcolours,y
 	jsr s_set_text_colour
 
+!ifdef TARGET_NEO6502 {
+	; Neo ignores PETSCII reverse codes, so emulate the status line's inverse
+	; video by swapping the console's actual ink/paper colours. Read them from
+	; firmware rather than zcolours: on Neo the console palette is independent
+	; of the C64 colour table used by the rest of the renderer.
+	!ifndef Z4PLUS {
+		jsr neo_get_text_colour
+		sta neo_status_fg
+		stx neo_status_bg
+		txa
+		ldx neo_status_fg
+		jsr neo_set_text_colour
+	}
+}
+
 !ifdef TARGET_X16 {
 	lda s_screen_width
 	cmp #30
@@ -1487,6 +1502,19 @@ draw_status_line
 	jsr s_set_text_colour
 	lda #146 ; reverse off
 	jsr s_printchar
+
+!ifdef TARGET_NEO6502 {
+	; get_cursor flushes the final buffered status-line word while the
+	; inverted colours are still active. Restore the console's original
+	; ink/paper only afterwards, so the last characters keep the right palette.
+	!ifndef Z4PLUS {
+		jsr get_cursor
+		lda neo_status_fg
+		ldx neo_status_bg
+		jsr neo_set_text_colour
+	}
+}
+
 	pla
 	sta current_window
 	jmp restore_cursor

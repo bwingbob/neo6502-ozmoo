@@ -42,6 +42,11 @@ def parse_args():
     parser.add_argument("--cw", type=int, default=int(os.environ.get("NEO_SMOKE_CW", 18)))
     parser.add_argument("--ch", type=int, default=int(os.environ.get("NEO_SMOKE_CH", 24)))
     parser.add_argument("--tol", type=int, default=int(os.environ.get("NEO_SMOKE_TOL", 40)))
+    parser.add_argument(
+        "--report-inverted",
+        action="store_true",
+        help="write the inverted console row numbers to stderr as INVERTED_ROWS=...",
+    )
     return parser.parse_args()
 
 
@@ -105,19 +110,33 @@ def nearest_glyph(pattern):
     return best_character, best_distance
 
 
-def cell_pattern(pixels, x0, y0, cw, ch, column, row, tolerance):
+def is_foreground(colour, tolerance):
+    return all(abs(a - b) <= tolerance for a, b in zip(colour, FOREGROUND))
+
+
+def row_is_inverted(pixels, x0, y0, cw, ch, row, cols, tolerance):
+    """A console row is inverse video when foreground pixels dominate it."""
+    foreground = 0
+    total = 0
+    for column in range(cols):
+        for glyph_row in range(7):
+            for glyph_column in range(6):
+                x = x0 + column * cw + glyph_column * 3 + 1
+                y = y0 + row * ch + glyph_row * 3 + 1
+                total += 1
+                if is_foreground(pixels[x, y], tolerance):
+                    foreground += 1
+    return foreground * 2 > total
+
+
+def cell_pattern(pixels, x0, y0, cw, ch, column, row, tolerance, inverted):
     pattern = []
     for glyph_row in range(7):
         bits = []
         for glyph_column in range(6):
             x = x0 + column * cw + glyph_column * 3 + 1
             y = y0 + row * ch + glyph_row * 3 + 1
-            colour = pixels[x, y]
-            bits.append(
-                1
-                if all(abs(a - b) <= tolerance for a, b in zip(colour, FOREGROUND))
-                else 0
-            )
+            bits.append(1 if is_foreground(pixels[x, y], tolerance) != inverted else 0)
         pattern.append(tuple(bits))
     return tuple(pattern)
 
@@ -130,12 +149,19 @@ def main():
     image = Image.open(args.screenshot).convert("RGB")
     pixels = image.load()
 
+    inverted_rows = []
     for row in range(args.rows):
+        inverted = row_is_inverted(
+            pixels, args.x0, args.y0, args.cw, args.ch,
+            row, args.cols, args.tol
+        )
+        if inverted:
+            inverted_rows.append(row)
         characters = []
         for column in range(args.cols):
             pattern = normalise_pattern(cell_pattern(
                 pixels, args.x0, args.y0, args.cw, args.ch,
-                column, row, args.tol
+                column, row, args.tol, inverted
             ))
             if pattern == CURSOR_PATTERN:
                 character = ""
@@ -147,6 +173,12 @@ def main():
                     character = "?"
             characters.append(character)
         print(f"{row:02}: {''.join(characters)}")
+
+    if args.report_inverted:
+        print(
+            "INVERTED_ROWS=" + ",".join(str(row) for row in inverted_rows),
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

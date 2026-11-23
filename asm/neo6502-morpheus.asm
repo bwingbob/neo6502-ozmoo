@@ -33,6 +33,8 @@ neo_kernal_lpref_name   !fill 257, 0
 neo_kernal_cmd_response !fill 40, 0
 neo_kernal_cmd_resp_len !byte 0
 neo_kernal_cmd_resp_idx !byte 0
+neo_status_fg           !byte 0
+neo_status_bg           !byte 0
 
 neo_kernal_status_ok_msg
 	!pet "00, OK,00,00"
@@ -109,6 +111,25 @@ neo_set_cursor_pos
 	ldx #neo_api_fn_set_cursor_pos
 	jsr neo_kernal_api_call
 	pla
+	rts
+
+neo_set_text_colour
+	; In:  A = foreground colour, X = background colour
+	; Out: A/X/Y clobbered
+	sta neo_api_param0
+	stx neo_api_param1
+	lda #neo_api_group_console
+	ldx #neo_api_fn_set_text_color
+	jmp neo_kernal_api_call
+
+neo_get_text_colour
+	; Out: A = foreground colour, X = background colour
+	;       A/X/Y clobbered
+	lda #neo_api_group_console
+	ldx #neo_api_fn_read_text_color
+	jsr neo_kernal_api_call
+	lda neo_api_param0
+	ldx neo_api_param1
 	rts
 
 neo_delete_line
