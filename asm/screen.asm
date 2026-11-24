@@ -1363,9 +1363,10 @@ draw_status_line
 	lda .statusline_temp
 	clc
 !ifdef TARGET_NEO6502 {
-	; Leave the last column unused: writing there makes Neo firmware wrap
-	; and scroll row 0, losing the status line.
-	adc #9
+	; The Neo console reserves columns 51 and 52 (the MORE marker and the
+	; firmware wrap cell). Reserve one extra column here so the final move
+	; digit is flushed before the word-wrap guard instead of wrapping row 0.
+	adc #10
 } else {
 	adc #8
 }
@@ -1376,7 +1377,7 @@ draw_status_line
 	sec
 	sbc .statusline_temp
 !ifdef TARGET_NEO6502 {
-	sbc #9
+	sbc #10
 } else {
 	sbc #8
 }
@@ -1512,7 +1513,8 @@ draw_status_line
 	lda s_screen_width
 	sec
 !ifdef TARGET_NEO6502 {
-	sbc #17
+	; Keep the final AM/PM character clear of the Neo wrap guard as well.
+	sbc #18
 } else {
 	sbc #16
 }

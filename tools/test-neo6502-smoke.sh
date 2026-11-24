@@ -159,7 +159,9 @@ expect_text "puzzles, and descriptions"
 expect_text "the larger, disk-based version of Zork I."
 expect_text '"WELCOME TO ZORK, a game of adventure'
 expect_text ">read leaflet"
-expect_regex '^00: West of House'
+# The score line must fit on row 0; a reserve that is one column too small
+# makes the final move count wrap into the lower window.
+expect_regex '^00: West of House +SC:[0-9]+ MV:[0-9]+ *$'
 expect_regex '^29: >'
 
 # Only the top status line is inverse video on Neo6502.
