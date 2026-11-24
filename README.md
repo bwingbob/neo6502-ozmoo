@@ -141,3 +141,21 @@ Special thanks to:
 * Bart van Leeuwen for testing Ozmoo on the C128
 * Karol Stasiak for several configuration and vmem patches
 * Dennis Holmes for adding smooth scrolling support
+
+
+## Neo6502 builds
+
+The Neo6502 target is currently a text-only Ozmoo build. It uses the non-Z6
+screen path and mode P with flat, disk-backed VMEM; Z6 graphics/mouse, REU,
+OPTIMIZE_VMEM and the C64-only build modes are not part of the Neo6502 build.
+Builds have been verified with Z3 stories (Minizork and Zork I-III) and with a
+Z5 story (Praxix). Native save/restore writes `<GAME>.S00` beside the game's
+`.STORY` and `.CFG` sidecars.
+
+Build a Neo6502 game with:
+
+    ruby make.rb -t:neo6502 game.z3
+
+The build writes `dist/<game>/<GAME>.NEO`, `<GAME>.STORY`, `<GAME>.CFG` and
+`dist/<game>.zip`. Copy or unzip that directory onto the Neo's storage and load
+`<GAME>.NEO`.
