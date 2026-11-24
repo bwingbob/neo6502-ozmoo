@@ -654,6 +654,14 @@ neo_kernal_delay_1ms_inner
 	rts
 
 neo_kernal_reset
+	; Restore the firmware's default console palette and clear the screen while
+	; the interpreter's console helpers are still resident. BASIC is reloaded
+	; immediately afterwards and does not reset a palette set by the game.
+	lda #neo_basic_console_fg
+	ldx #neo_basic_console_bg
+	jsr neo_set_console_colours
+	lda #12 ; CONWrite clear screen / home cursor
+	jsr neo_vector_writechar
 	jmp neo_reset_trampoline
 
 ; --- 16-bit Morpheus seek/read primitives for VMEM paging ---

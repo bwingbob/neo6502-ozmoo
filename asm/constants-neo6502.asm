@@ -132,6 +132,12 @@ neo_console_bg       = NEO_BGCOL
 neo_console_fg_code  = $80
 neo_console_bg_code  = $90
 
+; CONInitialise/NeoBasic default console palette: white on black. Quit must
+; restore this before reloading BASIC, otherwise BASIC draws its banner and
+; prompts over the game's background colour.
+neo_basic_console_fg  = 7
+neo_basic_console_bg  = 0
+
 neo_api_fn_load_file  = $02
 neo_api_fn_store_file = $03
 neo_api_fn_file_open  = $04
