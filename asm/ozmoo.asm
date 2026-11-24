@@ -3193,10 +3193,15 @@ end_of_routines_in_stack_space
 !ifdef TARGET_NEO6502 {
 ; Quit has to re-load the NeoBasic image over the interpreter before handing
 ; control back, and the API is asynchronous. The polling loop therefore lives
-; above the BASIC image ($0800-$497c), in padding that the interpreter does not
-; otherwise use. Jumping directly to $0800 is deliberate: the reset vector at
-; $0000 is zero-page RAM during a game and cannot be used as a return address.
-	!fill neo_reset_trampoline - *, 0
+; above the BASIC image ($0800-$497c). Small builds pad to $4980, but a Z5
+; interpreter can extend past that point, so larger builds place the loop
+; immediately after the code instead and let story_start move up accordingly.
+; Jumping directly to $0800 is deliberate: the reset vector at $0000 is
+; zero-page RAM during a game and cannot be used as a return address.
+	!if end_of_routines_in_stack_space < neo_basic_image_end {
+		!fill neo_basic_image_end - end_of_routines_in_stack_space, 0
+	}
+neo_reset_trampoline
 neo_basic_reload_and_jump
 	lda #neo_api_fn_load_basic
 	sta neo_api_function
