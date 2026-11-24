@@ -388,6 +388,9 @@ s_screen_width !byte 0
 s_screen_height !byte 0
 s_screen_width_plus_one !byte 0
 s_screen_width_minus_one !byte 0
+!ifdef TARGET_NEO6502 {
+s_screen_width_minus_two !byte 0
+}
 s_screen_height_minus_one !byte 0
 s_screen_size !byte 0, 0
 !ifdef TARGET_X16 {
@@ -784,6 +787,8 @@ s_printchar
 	dec s_screen_width_minus_one
 	sta s_screen_width_plus_one
 	inc s_screen_width_plus_one
+	lda #SCREEN_WIDTH - 2
+	sta s_screen_width_minus_two
 	lda #SCREEN_HEIGHT
 	sta s_screen_height
 	sta s_screen_height_minus_one
@@ -879,9 +884,10 @@ s_printchar
 	lda s_neo_char
 	and #$7f
 	ldx s_neo_word_len
-	; Never fill the last column: Neo firmware auto-wraps there and scrolls
-	; row 0, which would scroll the status line away as well.
-	cpx #SCREEN_WIDTH - 1
+	; Leave the last two columns free: writing in column 52 makes the Neo
+	; firmware auto-wrap and scroll row 0 away, and column 51 holds the
+	; inverted "*" while the [More] prompt waits for a key.
+	cpx #SCREEN_WIDTH - 2
 	bcc +
 	jsr .neo_flush_word
 	ldx #0
@@ -896,7 +902,7 @@ s_printchar
 	bne .neo_space_not_col0
 	rts
 .neo_space_not_col0
-	cmp s_screen_width_minus_one
+	cmp s_screen_width_minus_two
 	bcc .neo_space_emit
 	rts
 .neo_space_emit
@@ -906,6 +912,10 @@ s_printchar
 	rts
 
 .neo_emit_newline
+	; The generic buffered path counts lines and shows the [More] prompt, but
+	; Neo bypasses that path to keep its own word buffer stable. Count here
+	; instead, before the console scrolls the completed line away.
+	jsr increase_num_rows
 	lda #0
 	sta zp_screencolumn
 	inc zp_screenrow
@@ -930,9 +940,9 @@ s_printchar
 	beq .neo_emit_word
 	clc
 	adc s_neo_word_len
-	; A word ending in the last column would make the firmware wrap and
+	; A word ending in a reserved column would make the firmware wrap and
 	; scroll row 0 before we handle the newline ourselves.
-	cmp s_screen_width
+	cmp s_screen_width_minus_one
 	bcc .neo_emit_word
 	jsr .neo_emit_newline
 

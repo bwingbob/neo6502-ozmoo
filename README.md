@@ -168,7 +168,8 @@ Names map to the Neo firmware palette: `black` 0, `red` 1, `green` 2,
 `darkgrey` 9, `darkgreen` 10, `orange` 11, `brown` 12, `lavender` 13,
 `lightpeach` 14 and `lightgrey` 15. The defaults are `white` foreground and
 `darkblue` background. The Z1-Z3 status line uses the same pair with the colours
-swapped.
+swapped. Long Z1-Z3 text pauses with an inverted `*` in the bottom-right cell
+before scrolling, like the other Ozmoo targets.
 
 The build writes `dist/<game>/<GAME>.NEO`, `<GAME>.STORY`, `<GAME>.CFG` and
 `dist/<game>.zip`. Copy or unzip that directory onto the Neo's storage and load

@@ -50,7 +50,7 @@ This repo (`origin`: `bwingbob/neo6502-ozmoo`) is a Neo6502-focused fork of Ozmo
 
 ## Neo6502 emulator findings (from current port work)
 
-- Neo text output is currently most stable through the target-specific path in `asm/screenkernal.asm` (`.neo_printchar`), with `TARGET_NEO6502` bypass in `printchar_buffered` (`asm/screen.asm`). Re-enabling the generic buffered path for Neo has repeatedly caused one-character-per-line regressions.
+- Neo text output is currently most stable through the target-specific path in `asm/screenkernal.asm` (`.neo_printchar`), with `TARGET_NEO6502` bypass in `printchar_buffered` (`asm/screen.asm`). Re-enabling the generic buffered path for Neo has repeatedly caused one-character-per-line regressions. Line counting for the Z1-Z3 `[More]` prompt therefore lives in `.neo_emit_newline`, and the marker is drawn by the `TARGET_NEO6502` branch of `show_more_prompt`; keep both in sync if the buffered path changes.
 - The Neo console path should output plain character bytes (masked with `#$7f`) rather than C64 screen codes. Keep Neo-specific character conversion behavior isolated in `TARGET_NEO6502` branches.
 - Current verified geometry for emulator/runtime behavior is **53x30** (`SCREEN_WIDTH=53`, `SCREEN_HEIGHT=30` in `asm/constants-neo6502.asm`).
 - Newline handling that currently works for this path is CR-based (`#13`) in Neo emit routines. Treat CR/LF combinations as platform-sensitive and verify in emulator before changing.

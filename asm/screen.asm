@@ -582,6 +582,10 @@ show_more_prompt
 	; time to show [More]
 	jsr clear_num_rows
 
+!ifdef TARGET_NEO6502 {
+	jmp .neo_show_more_prompt
+}
+
 !ifdef TARGET_C128 {
     bit COLS_40_80
     bpl +
@@ -663,6 +667,7 @@ show_more_prompt
 	beq -- ; Always branch
 +
 }
+
 !ifdef TARGET_C128 {
     bit COLS_40_80
     bpl +
@@ -684,6 +689,58 @@ show_more_prompt
 	rts
 
 .more_text_char !byte 0
+
+!ifdef TARGET_NEO6502 {
+.neo_show_more_prompt
+	; The Neo console ignores PETSCII reverse video, so emulate the reversed
+	; "*" marker by temporarily swapping the build-time console palette.
+	; Column 51 is kept free by the Neo word-wrap logic: column 52 would make
+	; the firmware auto-wrap and scroll the status line away.
+	lda zp_screenrow
+	pha
+	lda zp_screencolumn
+	pha
+
+	lda #NEO_BGCOL
+	ldx #NEO_FGCOL
+	jsr neo_set_console_colours
+
+	ldx #SCREEN_HEIGHT - 1
+	ldy #SCREEN_WIDTH - 2
+	jsr neo_set_cursor_pos
+	lda #$2a
+	jsr neo_vector_writechar
+
+	lda #NEO_FGCOL
+	ldx #NEO_BGCOL
+	jsr neo_set_console_colours
+
+	ldx #40
+.neo_more_check_for_keypress
+	jsr wait_a_jiffy
+	jsr getchar_and_maybe_toggle_darkmode
+	cmp #0
+	bne .neo_more_key_pressed
+	dex
+	bne .neo_more_check_for_keypress
+.neo_more_key_pressed
+
+	; Remove the marker before the caller scrolls this line away.
+	ldx #SCREEN_HEIGHT - 1
+	ldy #SCREEN_WIDTH - 2
+	jsr neo_set_cursor_pos
+	lda #$20
+	jsr neo_vector_writechar
+
+	pla
+	sta zp_screencolumn
+	pla
+	sta zp_screenrow
+	ldx zp_screenrow
+	ldy zp_screencolumn
+	jsr neo_set_cursor_pos
+	rts
+}
 
 printchar_flush
 	; flush the printchar buffer
