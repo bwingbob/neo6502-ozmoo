@@ -81,3 +81,10 @@ games/zork1.z3
 .github/skills/6502-assembly/references/unofficial-opcodes.md
 games/zork2.z3
 games/zork3.z3
+games/adventz3.z3
+games/Adventz5.z5
+.gitignore
+games/planetfall.z3
+.gitignore
+games/WISHBRIN.DAT
+games/stationfall.z3
