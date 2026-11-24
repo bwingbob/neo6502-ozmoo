@@ -27,6 +27,12 @@ cursor_column !byte 0,0,0
 init_screen_colours
 	jsr s_init
 	!ifdef TARGET_NEO6502 {
+		; The Neo console ignores the C64-style colour RAM writes below, so
+		; apply the selected build-time palette through the console control
+		; codes before the first clear screen.
+		lda #NEO_FGCOL
+		ldx #NEO_BGCOL
+		jsr neo_set_console_colours
 		lda zcolours + FGCOL
 		jsr s_set_text_colour
 		lda zcolours + BGCOL
@@ -1198,8 +1204,8 @@ draw_status_line
 
 !ifdef TARGET_NEO6502 {
 	; Neo ignores PETSCII reverse codes, so emulate the status line's inverse
-	; video by swapping the console's green-on-black palette with black-on-green
-	; using the firmware's own colour control codes. This avoids the optional
+	; video by swapping the selected console foreground/background palette using
+	; the firmware's own colour control codes. This avoids the optional
 	; console colour API calls, which misbehave on some real firmware versions.
 	!ifndef Z4PLUS {
 		lda #neo_console_bg
@@ -1502,8 +1508,9 @@ draw_status_line
 
 !ifdef TARGET_NEO6502 {
 	; get_cursor flushes the final buffered status-line word while the
-	; inverted colours are still active. Restore green-on-black only afterwards,
-	; so the last characters keep the right palette and input stays visible.
+	; inverted colours are still active. Restore the normal foreground/background
+	; pair only afterwards, so the last characters keep the right palette and
+	; input stays visible.
 	!ifndef Z4PLUS {
 		jsr get_cursor
 		lda #neo_console_fg

@@ -145,7 +145,14 @@ capture_console() {
     local screenshot="$1"
     local decoded="$2"
     import -window "$WINDOW_ID" "$screenshot"
-    python3 "$TOOLS_DIR/decode_neo_console.py" "$screenshot" "$FONT_HEADER" > "$decoded"
+    local decode_args=()
+    if [[ -n "${NEO_SMOKE_FG_RGB:-}" ]]; then
+        decode_args+=(--fg-rgb "$NEO_SMOKE_FG_RGB")
+    fi
+    if [[ -n "${NEO_SMOKE_BG_RGB:-}" ]]; then
+        decode_args+=(--bg-rgb "$NEO_SMOKE_BG_RGB")
+    fi
+    python3 "$TOOLS_DIR/decode_neo_console.py" "${decode_args[@]}" "$screenshot" "$FONT_HEADER" > "$decoded"
     LAST_DECODED="$decoded"
 }
 

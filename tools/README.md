@@ -62,6 +62,13 @@ the Neo status line be checked without losing the surrounding text. With
 `INVERTED_ROWS=...`. It is a test helper, not part of the interpreter or the
 game.
 
+The expected pixel colours default to the normal Neo console palette. To check a
+build made with `-neo-fg`/`-neo-bg`, pass `--fg-rgb r,g,b` and `--bg-rgb r,g,b`
+(or set `NEO_SMOKE_FG_RGB`/`NEO_SMOKE_BG_RGB`). `test-neo6502-smoke.sh` forwards
+`-neo-fg`/`-neo-bg` from `NEO_SMOKE_FG`/`NEO_SMOKE_BG` and the RGB overrides from
+those two environment variables. `test-neo6502-save-restore.sh` honours the same
+RGB overrides.
+
 One known artefact: Praxix's banner is decoded as `Type "help" ... "guit" to
 exit`, although the interpreter prints `quit`. The decoder compares the first
 seven rows of each glyph (the first seven bytes of each eight-byte font entry);

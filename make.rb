@@ -311,6 +311,37 @@ $colour_names = {
 	'gray3' => 23,
 }
 
+# Neo6502 console palette indices from firmware/common/include/interface/palette.h
+$neo_colour_names = {
+	'black' => 0,
+	'red' => 1,
+	'green' => 2,
+	'yellow' => 3,
+	'darkblue' => 4,
+	'dblue' => 4,
+	'darkpurple' => 5,
+	'dpurple' => 5,
+	'blue' => 6,
+	'white' => 7,
+	'solidblack' => 8,
+	'black2' => 8,
+	'darkgrey' => 9,
+	'darkgray' => 9,
+	'dgrey' => 9,
+	'dgray' => 9,
+	'darkgreen' => 10,
+	'dgreen' => 10,
+	'orange' => 11,
+	'brown' => 12,
+	'lavender' => 13,
+	'lightpeach' => 14,
+	'lpeach' => 14,
+	'lightgrey' => 15,
+	'lightgray' => 15,
+	'lgrey' => 15,
+	'lgray' => 15,
+}
+
 $bgcol_names = [
 	'background', 'bg', 
 	'backgroundcol', 'bgcol', 
@@ -1588,6 +1619,12 @@ def build_interpreter()
 	end
 	if $fg_colour
 		colourflags += " -DFGCOL=#{$fg_colour}"
+	end
+	if $neo_fg_colour
+		colourflags += " -DNEO_FGCOL=#{$neo_fg_colour}"
+	end
+	if $neo_bg_colour
+		colourflags += " -DNEO_BGCOL=#{$neo_bg_colour}"
 	end
 	if $border_colour
 		colourflags += " -DBORDERCOL=#{$border_colour}"
@@ -2980,6 +3017,7 @@ def print_usage
 	puts "         [-i <imagefile>] [-if <imagefile>] [-ch[:n]] [-sb[:0|1|6|8|10|12]] [-rb[:0|1]]"
 	puts "         [-fgcol:<colourname>] [-bgcol:<colourname>] [-bordercol:<colourname>]"
 	puts "         [-statuscol:<colourname>] [-inputcol:<colourname>] [-cursorcol:<colourname>]"
+	puts "         [-neo-fg:<name|index>] [-neo-bg:<name|index>]"
 	puts "         [-dm[:0|1]] [-dmfgcol:<colourname>] [-dmbgcol:<colourname>] [-dmbordercol:<colourname>]"
 	puts "         [-dmstatuscol:<colourname>] [-dminputcol:<colourname>] [-dmcursorcol:<colourname>]"
 	puts "         [-ss[1-4]:\"text\"] [-sw:[nnn]] [-smooth[:0|1]] [-ecm[:0|1]] [-fcm[:0|1|40|80]]"
@@ -3020,6 +3058,8 @@ def print_usage
 	puts "  -statuscol/dmstatuscol Use the specified status line colour. Only valid for Z3 games. See docs for details."
 	puts "  -inputcol/dminputcol: Use the specified input colour. Only valid for Z3 and Z4 games. See docs for details."
 	puts "  -cursorcol/dmcursorcol: Use the specified cursor colour. (fg=same as fg (default)). See docs for details."
+	puts "  -neo-fg/neo-bg: Neo6502 console palette index (0-15) or name. Defaults: green on black."
+	puts "                  The Z1-Z3 status line uses the same pair with fg/bg swapped."
 	puts "  -dm: Enable the ability to switch to dark mode"
 	puts "  -ss1, -ss2, -ss3, -ss4: Add up to four lines of text to the splash screen."
 	puts "  -sw: Set the splash screen wait time (1-999 s), or 0 to disable splash screen."
@@ -3060,6 +3100,14 @@ def colour_value(argument, in_string, fg_ok, bg_ok)
 	exit 1
 end
 
+def neo_colour_value(argument, in_string)
+	clean_string = in_string.downcase.gsub(/[-_.]/,'')
+	return clean_string.to_i if clean_string =~ /^([0-9]|1[0-5])$/
+	return $neo_colour_names[clean_string] if $neo_colour_names.has_key? clean_string
+	puts "ERROR: Unknown Neo6502 colour name for #{argument}."
+	exit 1
+end
+
 splashes = [
 "", "", "", ""
 ]
@@ -3095,6 +3143,8 @@ $fg_colour = nil;
 $fg_colour_dm = nil;
 $bg_colour = nil;
 $bg_colour_dm = nil;
+$neo_fg_colour = nil
+$neo_bg_colour = nil
 $statusline_colour = nil
 $statusline_colour_dm = nil
 $input_colour = nil
@@ -3239,6 +3289,10 @@ begin
 			$bg_colour = colour_value(arg, $1, false, false)
 		elsif arg =~ /^-dmbgcol:(.*)$/
 			$bg_colour_dm = colour_value(arg, $1, false, false)
+		elsif arg =~ /^-neo-fg:(.*)$/
+			$neo_fg_colour = neo_colour_value(arg, $1)
+		elsif arg =~ /^-neo-bg:(.*)$/
+			$neo_bg_colour = neo_colour_value(arg, $1)
 		elsif arg =~ /^-inputcol:(.*)$/
 			$input_colour = colour_value(arg, $1, false, false)
 		elsif arg =~ /^-dminputcol:(.*)$/
@@ -3854,6 +3908,11 @@ if ($statusline_colour or $statusline_colour_dm) and $zcode_version > 3
 	puts "ERROR: Setting statusline colour can only be done with z1-z3 story files."
 	exit 1
 end	
+
+if ($neo_fg_colour or $neo_bg_colour) and $target != 'neo6502'
+	puts "ERROR: -neo-fg/-neo-bg can only be used with the Neo6502 target."
+	exit 1
+end
 
 if ($input_colour or $input_colour_dm) and $zcode_version > 4
 	puts "ERROR: Setting input colour can only be done with z1-z4 story files."

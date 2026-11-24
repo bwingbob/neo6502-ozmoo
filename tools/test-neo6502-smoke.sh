@@ -67,7 +67,14 @@ cd "$ROOT_DIR"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
     echo "Building $STORY for Neo6502..."
-    env OZMOO_HOME="$OZMOO_HOME" ruby make.rb -t:neo6502 -v "$STORY"
+    BUILD_ARGS=(-t:neo6502 -v "$STORY")
+    if [[ -n "${NEO_SMOKE_FG:-}" ]]; then
+        BUILD_ARGS+=("-neo-fg:$NEO_SMOKE_FG")
+    fi
+    if [[ -n "${NEO_SMOKE_BG:-}" ]]; then
+        BUILD_ARGS+=("-neo-bg:$NEO_SMOKE_BG")
+    fi
+    env OZMOO_HOME="$OZMOO_HOME" ruby make.rb "${BUILD_ARGS[@]}"
 fi
 
 GAME_BASE="$(basename "${STORY%.*}")"
@@ -118,7 +125,14 @@ sleep "$FINAL_DELAY"
 
 echo "Capturing console..."
 import -window "$WINDOW_ID" "$SCREENSHOT"
-python3 "$TOOLS_DIR/decode_neo_console.py" --report-inverted \
+DECODE_ARGS=(--report-inverted)
+if [[ -n "${NEO_SMOKE_FG_RGB:-}" ]]; then
+    DECODE_ARGS+=(--fg-rgb "$NEO_SMOKE_FG_RGB")
+fi
+if [[ -n "${NEO_SMOKE_BG_RGB:-}" ]]; then
+    DECODE_ARGS+=(--bg-rgb "$NEO_SMOKE_BG_RGB")
+fi
+python3 "$TOOLS_DIR/decode_neo_console.py" "${DECODE_ARGS[@]}" \
     "$SCREENSHOT" "$FONT_HEADER" > "$DECODED" 2> "$INVERTED_REPORT"
 
 failures=0

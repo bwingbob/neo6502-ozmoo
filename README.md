@@ -158,6 +158,18 @@ Build a Neo6502 game with:
 
     ruby make.rb -t:neo6502 game.z3
 
+The Neo console palette can be chosen at build time with `-neo-fg` and `-neo-bg`,
+using either a palette index (0-15) or a name:
+
+    ruby make.rb -t:neo6502 -neo-fg:white -neo-bg:darkblue game.z3
+
+Names map to the Neo firmware palette: `black` 0, `red` 1, `green` 2,
+`yellow` 3, `darkblue` 4, `darkpurple` 5, `blue` 6, `white` 7, `solidblack` 8,
+`darkgrey` 9, `darkgreen` 10, `orange` 11, `brown` 12, `lavender` 13,
+`lightpeach` 14 and `lightgrey` 15. The defaults are `green` foreground and
+`black` background. The Z1-Z3 status line uses the same pair with the colours
+swapped.
+
 The build writes `dist/<game>/<GAME>.NEO`, `<GAME>.STORY`, `<GAME>.CFG` and
 `dist/<game>.zip`. Copy or unzip that directory onto the Neo's storage and load
 `<GAME>.NEO`.

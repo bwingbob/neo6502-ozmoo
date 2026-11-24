@@ -29,6 +29,13 @@ MAX_DISTANCE = 4
 FONT_ITEMS = []
 
 
+def parse_rgb(text):
+    parts = [int(part, 0) for part in text.split(",")]
+    if len(parts) != 3 or any(part < 0 or part > 255 for part in parts):
+        raise argparse.ArgumentTypeError(f"expected three comma-separated RGB bytes, got {text!r}")
+    return tuple(parts)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Decode a Neo6502 emulator console screenshot."
@@ -42,6 +49,18 @@ def parse_args():
     parser.add_argument("--cw", type=int, default=int(os.environ.get("NEO_SMOKE_CW", 18)))
     parser.add_argument("--ch", type=int, default=int(os.environ.get("NEO_SMOKE_CH", 24)))
     parser.add_argument("--tol", type=int, default=int(os.environ.get("NEO_SMOKE_TOL", 40)))
+    parser.add_argument(
+        "--fg-rgb",
+        type=parse_rgb,
+        default=parse_rgb(os.environ.get("NEO_SMOKE_FG_RGB", ",".join(map(str, FOREGROUND)))),
+        help="expected foreground RGB (default: 0,238,51 or NEO_SMOKE_FG_RGB)",
+    )
+    parser.add_argument(
+        "--bg-rgb",
+        type=parse_rgb,
+        default=parse_rgb(os.environ.get("NEO_SMOKE_BG_RGB", ",".join(map(str, BACKGROUND)))),
+        help="expected background RGB (default: 0,0,68 or NEO_SMOKE_BG_RGB)",
+    )
     parser.add_argument(
         "--report-inverted",
         action="store_true",
@@ -142,7 +161,10 @@ def cell_pattern(pixels, x0, y0, cw, ch, column, row, tolerance, inverted):
 
 
 def main():
+    global FOREGROUND, BACKGROUND
     args = parse_args()
+    FOREGROUND = args.fg_rgb
+    BACKGROUND = args.bg_rgb
     font = load_font(args.font_header)
     exact = build_lookup(font)
 
