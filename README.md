@@ -145,6 +145,8 @@ Special thanks to:
 
 ## Neo6502 builds
 
+![Ozmoo running on Neo6502](screenshots/neo6502.png)
+
 The Neo6502 target is currently a text-only Ozmoo build. It uses the non-Z6
 screen path and mode P with flat, disk-backed VMEM; Z6 graphics/mouse, REU,
 OPTIMIZE_VMEM and the C64-only build modes are not part of the Neo6502 build.
