@@ -113,8 +113,8 @@ neo_api_fn_set_text_color = $0f
 ; Neo console palette indices and the control codes that select them. CONWrite
 ; treats $80+n as foreground and $90+n as background, without moving the cursor.
 ; -neo-fg/-neo-bg override the defaults at build time (see make.rb).
-neo_console_fg_default = 2
-neo_console_bg_default = 0
+neo_console_fg_default = 7
+neo_console_bg_default = 4
 !ifndef NEO_FGCOL {
 	NEO_FGCOL = neo_console_fg_default
 }

@@ -3058,7 +3058,7 @@ def print_usage
 	puts "  -statuscol/dmstatuscol Use the specified status line colour. Only valid for Z3 games. See docs for details."
 	puts "  -inputcol/dminputcol: Use the specified input colour. Only valid for Z3 and Z4 games. See docs for details."
 	puts "  -cursorcol/dmcursorcol: Use the specified cursor colour. (fg=same as fg (default)). See docs for details."
-	puts "  -neo-fg/neo-bg: Neo6502 console palette index (0-15) or name. Defaults: green on black."
+	puts "  -neo-fg/neo-bg: Neo6502 console palette index (0-15) or name. Defaults: white on darkblue."
 	puts "                  The Z1-Z3 status line uses the same pair with fg/bg swapped."
 	puts "  -dm: Enable the ability to switch to dark mode"
 	puts "  -ss1, -ss2, -ss3, -ss4: Add up to four lines of text to the splash screen."

@@ -22,8 +22,8 @@ except ImportError:  # pragma: no cover - environment setup error
 
 SCREEN_COLS = 53
 SCREEN_ROWS = 30
-FOREGROUND = (0, 238, 51)
-BACKGROUND = (0, 0, 68)
+FOREGROUND = (255, 241, 232)
+BACKGROUND = (29, 43, 83)
 MAX_DISTANCE = 4
 
 FONT_ITEMS = []
@@ -53,13 +53,13 @@ def parse_args():
         "--fg-rgb",
         type=parse_rgb,
         default=parse_rgb(os.environ.get("NEO_SMOKE_FG_RGB", ",".join(map(str, FOREGROUND)))),
-        help="expected foreground RGB (default: 0,238,51 or NEO_SMOKE_FG_RGB)",
+        help="expected foreground RGB (default: 255,241,232 or NEO_SMOKE_FG_RGB)",
     )
     parser.add_argument(
         "--bg-rgb",
         type=parse_rgb,
         default=parse_rgb(os.environ.get("NEO_SMOKE_BG_RGB", ",".join(map(str, BACKGROUND)))),
-        help="expected background RGB (default: 0,0,68 or NEO_SMOKE_BG_RGB)",
+        help="expected background RGB (default: 29,43,83 or NEO_SMOKE_BG_RGB)",
     )
     parser.add_argument(
         "--report-inverted",
