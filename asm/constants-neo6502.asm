@@ -9,6 +9,11 @@
 
 ; ---- temporary machine/layout assumptions (bootstrap only) ----
 basic_reset           = $a000
+; NeoBasic lives at $0800 and its image ends at $497c. A full quit therefore
+; reloads BASIC through the firmware API and jumps here: the wait loop must be
+; above the BASIC image, in the unused padding before the resident story data.
+neo_basic_cold_start  = $0800
+neo_reset_trampoline  = $4980
 SCREEN_HEIGHT         = 30
 SCREEN_WIDTH          = 53
 SCREEN_ADDRESS        = $0400
@@ -94,6 +99,7 @@ neo_api_group_console = $02
 neo_api_group_fileio  = $03
 
 neo_api_fn_timer      = $01
+neo_api_fn_load_basic = $03
 neo_api_fn_reset      = $07
 
 neo_api_fn_read_char  = $01

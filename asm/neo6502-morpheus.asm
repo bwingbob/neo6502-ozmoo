@@ -654,7 +654,7 @@ neo_kernal_delay_1ms_inner
 	rts
 
 neo_kernal_reset
-	jmp basic_reset
+	jmp neo_reset_trampoline
 
 ; --- 16-bit Morpheus seek/read primitives for VMEM paging ---
 

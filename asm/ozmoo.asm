@@ -1248,6 +1248,10 @@ neo_start_after_prelude
 }
 	; stz 1
 	; jmp ($fffc)
+} else ifdef TARGET_NEO6502 {
+	; The C64-style reset vector at $a000 is inside the resident story data on
+	; Neo6502 and cannot be used here. Reload BASIC instead.
+	jmp neo_kernal_reset
 } else {
 	; Back to normal memory banks
 	lda #%00110111
@@ -3186,7 +3190,25 @@ init_sid
 
 end_of_routines_in_stack_space
 
+!ifdef TARGET_NEO6502 {
+; Quit has to re-load the NeoBasic image over the interpreter before handing
+; control back, and the API is asynchronous. The polling loop therefore lives
+; above the BASIC image ($0800-$497c), in padding that the interpreter does not
+; otherwise use. Jumping directly to $0800 is deliberate: the reset vector at
+; $0000 is zero-page RAM during a game and cannot be used as a return address.
+	!fill neo_reset_trampoline - *, 0
+neo_basic_reload_and_jump
+	lda #neo_api_fn_load_basic
+	sta neo_api_function
+	lda #neo_api_group_system
+	sta neo_api_command
+-	lda neo_api_command
+	bne -
+	jmp neo_basic_cold_start
+	!fill stack_start + stack_size - * - 1, 0
+} else {
 	!fill stack_size - (* - stack_start) - 1,0 ; 4 pages - 1 byte
+}
 	!byte >stack_start
 story_start
 
