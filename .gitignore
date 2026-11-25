@@ -88,3 +88,13 @@ games/planetfall.z3
 .gitignore
 games/WISHBRIN.DAT
 games/stationfall.z3
+dist/seastalker/SEASTALK.CFG
+dist/seastalker/SEASTALK.NEO
+.gitignore
+dist/seastalker/SEASTALK.STORY
+dist/voices/VOICES.CFG
+.gitignore
+dist/voices/VOICES.STORY
+dist/voices/VOICES.NEO
+games/seastalker.z3
+games/voices.z5
