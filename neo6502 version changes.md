@@ -2,10 +2,10 @@
 
 This document describes how this fork differs from upstream Ozmoo. The
 comparison point is upstream `master` at `5b990fb` ("Added benchmark
-walkthrough for Madman"). This fork is at `60aabf4`; the merge base is the same
-upstream commit, so at the time of writing the fork is 50 commits ahead and has
-no upstream-only commits. The full diff is 187 files, most of which are vendored
-Neo6502 emulator/firmware support material rather than interpreter changes.
+walkthrough for Madman"), which is also the merge base. The Neo6502 work is a
+cumulative series of commits on top of that snapshot. Most of the originally
+vendored emulator, firmware and platform-example files are no longer tracked
+here; they now come from the external firmware repository described below.
 
 The goal of the fork is to add a Neo6502 target without changing the existing
 C64, C128, MEGA65, Plus/4, X16 or Z6 builds. Almost all Neo behaviour is behind
@@ -22,6 +22,25 @@ generic differences that are present in the diff are listed at the end.
 * Z1-Z3 status-line inversion and a Neo-specific MORE prompt.
 * Quit restores the NeoBasic console and reloads BASIC through the firmware.
 * New `.NEO` executable packager, flat release packages and emulator tests.
+
+## Neo6502 firmware checkout
+
+The emulator, firmware images, font header and platform examples are not part
+of this repository. Clone the upstream
+[neo6502-firmware](https://github.com/paulscottrobson/neo6502-firmware) repo and
+build its emulator before using `-s` or the emulator tests:
+
+```sh
+git clone https://github.com/paulscottrobson/neo6502-firmware.git ../neo6502-firmware
+make -C ../neo6502-firmware/emulator
+export NEO_FIRMWARE_ROOT=/path/to/neo6502-firmware
+```
+
+The scripts default `NEO_FIRMWARE_ROOT` to a sibling `../neo6502-firmware`
+checkout. `make.rb` uses `<NEO_FIRMWARE_ROOT>/emulator/neo` (or `neo.exe` on
+Windows); with the variable unset it looks for `neo` on `PATH`. A local `NEO`
+entry in `.ozmoorc` still overrides both. Building a game itself does not need
+the firmware checkout.
 
 ## Build target and release format
 
@@ -203,9 +222,9 @@ not part of `make -C tests all` because they need a Neo firmware checkout and
 X11 tools.
 
 `README.md` and `tools/README.md` document the target, palette options, release
-layout and emulator tests. `screenshots/neo6502.png` was added. The `neo6502/`
-directory vendors emulator binaries, firmware images, BASIC/ROM artefacts,
-tool archives and platform examples for local development and testing.
+layout and emulator tests. `screenshots/neo6502.png` was added. The former
+`neo6502/` directory of vendored emulator binaries, firmware images and platform
+examples is no longer tracked; see "Neo6502 firmware checkout" above.
 
 ## Other differences from upstream
 

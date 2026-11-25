@@ -22,16 +22,25 @@ resident VMEM reaching the C64-compatible I/O window: a story block mapped over
 inverse video colours on Neo6502. It uses `decode_neo_console.py` to match
 screenshot pixels against the firmware's `font_5x7.h`, so no OCR is involved.
 
+Clone the upstream
+[neo6502-firmware](https://github.com/paulscottrobson/neo6502-firmware) repo and
+build its emulator, then point `NEO_FIRMWARE_ROOT` at that checkout:
+
 ```sh
-NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
+git clone https://github.com/paulscottrobson/neo6502-firmware.git ../neo6502-firmware
+make -C ../neo6502-firmware/emulator
+export NEO_FIRMWARE_ROOT=/path/to/neo6502-firmware
+tools/test-neo6502-smoke.sh
 ```
+
+The scripts default to a sibling `../neo6502-firmware` checkout and expect
+`emulator/neo` and `firmware/common/include/interface/font_5x7.h` under it.
 
 The script writes its screenshot, decoded text grid, inverse-video report, and
 emulator log under `/tmp/opencode/neo-smoke`. It needs `ruby`, `python3` with
 Pillow, `xdotool`,
-ImageMagick `import`, an SDL display, and a Neo firmware checkout containing
-`emulator/neo` and `firmware/common/include/interface/font_5x7.h`. Defaults can
-be overridden with `NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
+ImageMagick `import`, and an SDL display. Defaults can be overridden with
+`NEO_FIRMWARE_ROOT`, `NEO_SMOKE_WORKDIR`,
 `NEO_SMOKE_STORY`, `OZMOO_HOME`, `NEO_SMOKE_SKIP_BUILD`, and the timing and
 screen-geometry variables named at the top of the script.
 

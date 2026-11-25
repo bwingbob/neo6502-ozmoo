@@ -63,6 +63,12 @@
 /x16_*/
 neo6502_praxix.d64
 /neo6502_minizork.d64
+
+# Local Neo6502 emulator, firmware images and platform examples. These are
+# development tools, not part of the Ozmoo source tree; point make.rb and the
+# Neo test scripts at an external checkout instead.
+/neo6502/
+
 /storage/
 memory.dump
 .github/skills/6502-assembly/SKILL.md

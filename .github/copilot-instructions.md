@@ -70,13 +70,19 @@ raw binaries, waits for the SDL window by PID, injects game commands with
 asserts the rendered text, and kills the emulator in an `EXIT` trap. Prefer it
 over asking the user to click through the emulator.
 
+The emulator and font header come from the upstream
+[neo6502-firmware](https://github.com/paulscottrobson/neo6502-firmware) repo,
+not a vendored copy. Clone it, build `emulator/neo`, and set
+`NEO_FIRMWARE_ROOT` (the scripts default to a sibling `../neo6502-firmware`):
+
 ```sh
-# From the repository root; uses /tmp/opencode/neo-firmware/emulator/neo.
-NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware tools/test-neo6502-smoke.sh
+git clone https://github.com/paulscottrobson/neo6502-firmware.git ../neo6502-firmware
+make -C ../neo6502-firmware/emulator
+export NEO_FIRMWARE_ROOT=/path/to/neo6502-firmware
+tools/test-neo6502-smoke.sh
 
 # Reuse the binaries from an immediately preceding build.
-NEO_SMOKE_SKIP_BUILD=1 NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware \
-    tools/test-neo6502-smoke.sh
+NEO_SMOKE_SKIP_BUILD=1 tools/test-neo6502-smoke.sh
 ```
 
 Outputs are under `/tmp/opencode/neo-smoke`: `screen.png`, `decoded.txt`, and
@@ -86,8 +92,7 @@ ImageMagick `import`, and an SDL display.
 The manual equivalent of the launch step is:
 
 ```sh
-cd /home/bob/Documents/Projects/neo6502-ozmoo
-NEO_FIRMWARE_ROOT=/tmp/opencode/neo-firmware
+cd /path/to/neo6502-ozmoo
 mkdir -p /tmp/opencode/neo-smoke
 env OZMOO_HOME=/tmp/ozmoo-home ruby make.rb -t:neo6502 -v examples/minizork.z3
 

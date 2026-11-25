@@ -6,6 +6,13 @@ require 'json'
 
 $is_windows = (ENV['OS'] == 'Windows_NT')
 
+# The Neo6502 emulator and firmware live in the upstream firmware repo, not in
+# this tree. NEO_FIRMWARE_ROOT may point at a local checkout; without it, the
+# emulator is looked up on PATH (or overridden in .ozmoorc).
+$neo_firmware_root = ENV['NEO_FIRMWARE_ROOT'].to_s
+$neo_emulator_name = $is_windows ? 'neo.exe' : 'neo'
+$neo_emulator = $neo_firmware_root.empty? ? $neo_emulator_name : File.join($neo_firmware_root, 'emulator', $neo_emulator_name)
+
 $executables = nil
 
 if $is_windows then
@@ -16,7 +23,7 @@ if $is_windows then
 		'X128' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\x128.exe -silent -80 -autostart-delay-random",
 		'XPLUS4' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\xplus4.exe -silent -autostart-delay-random",
 		'MEGA65' => "\"C:\\Program Files\\xemu\\xmega65.exe\" -syscon", # -syscon is a workaround for a serious xemu bug
-		'NEO' => __dir__ + "\\neo6502\\neo.exe",
+		'NEO' => $neo_emulator,
 		'C1541' => "C:\\WoInstall\\GTK3VICE-3.8-win64\\bin\\c1541.exe",
 		'EXOMIZER' => "C:\\WoInstall\\Exomizer-3.1.0\\win32\\exomizer.exe",
 		'ACME' => "C:\\WoInstall\\acme0.97win\\acme\\acme.exe",
@@ -34,7 +41,7 @@ else
 		'X128' => "x128 -silent -autostart-delay-random",
 		'XPLUS4' => "xplus4 -silent -autostart-delay-random",
 		'MEGA65' => "xemu-xmega65 -besure",
-		'NEO' => __dir__ + "/neo6502/neo",
+		'NEO' => $neo_emulator,
 		'C1541' => "c1541",
 		'EXOMIZER' => __dir__ + "/exomizer/src/exomizer",
 		'ACME' => "acme",
@@ -3060,6 +3067,8 @@ def print_usage
 	puts "  -cursorcol/dmcursorcol: Use the specified cursor colour. (fg=same as fg (default)). See docs for details."
 	puts "  -neo-fg/neo-bg: Neo6502 console palette index (0-15) or name. Defaults: white on darkblue."
 	puts "                  The Z1-Z3 status line uses the same pair with fg/bg swapped."
+	puts "  NEO_FIRMWARE_ROOT: local checkout of paulscottrobson/neo6502-firmware; -s uses"
+	puts "                  <root>/emulator/neo (neo.exe on Windows). Can also be set in .ozmoorc."
 	puts "  -dm: Enable the ability to switch to dark mode"
 	puts "  -ss1, -ss2, -ss3, -ss4: Add up to four lines of text to the splash screen."
 	puts "  -sw: Set the splash screen wait time (1-999 s), or 0 to disable splash screen."

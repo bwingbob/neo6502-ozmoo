@@ -7,8 +7,10 @@ clean:
 
 .PHONY: neo-smoke neo-save-restore
 
+# The scripts default NEO_FIRMWARE_ROOT to a sibling ../neo6502-firmware checkout.
+
 neo-smoke:
-	NEO_FIRMWARE_ROOT=$${NEO_FIRMWARE_ROOT:-/tmp/opencode/neo-firmware} ../tools/test-neo6502-smoke.sh
+	../tools/test-neo6502-smoke.sh
 
 neo-save-restore:
-	NEO_FIRMWARE_ROOT=$${NEO_FIRMWARE_ROOT:-/tmp/opencode/neo-firmware} ../tools/test-neo6502-save-restore.sh
+	../tools/test-neo6502-save-restore.sh

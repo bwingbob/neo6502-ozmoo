@@ -73,7 +73,7 @@ rasterline_for_scroll = 56
 
 ; --- Neo6502 Morpheus API constants ---
 ; Synced against:
-; - neo6502/examples/assembly/neo6502.asm.inc
+; - paulscottrobson/neo6502-firmware, examples/assembly/neo6502.asm.inc
 ; - https://www.neo6502.com/reference/api-listing/
 ;
 ; NOTE: neo6502.asm.inc currently uses ca65-style literals (e.g. #$01) and is

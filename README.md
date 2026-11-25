@@ -154,6 +154,14 @@ Builds have been verified with Z3 stories (Minizork and Zork I-III) and with a
 Z5 story (Praxix). Native save/restore writes `<GAME>.S00` beside the game's
 `.STORY` and `.CFG` sidecars.
 
+Building a game does not need a firmware checkout. Running `-s` or the Neo
+emulator tests does: clone the upstream
+[neo6502-firmware](https://github.com/paulscottrobson/neo6502-firmware) repo and
+build its emulator with `make -C <checkout>/emulator`. Set `NEO_FIRMWARE_ROOT` to
+that checkout (the scripts default to a sibling `../neo6502-firmware`). `make.rb`
+then uses `<NEO_FIRMWARE_ROOT>/emulator/neo`, or `neo` on `PATH` if the variable
+is unset. The path can also be overridden in `.ozmoorc` with `NEO = ...`.
+
 Build a Neo6502 game with:
 
     ruby make.rb -t:neo6502 game.z3
